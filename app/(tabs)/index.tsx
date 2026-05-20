@@ -1,0 +1,64 @@
+import { useEffect } from "react";
+import { View } from "react-native";
+import { useRouter } from "expo-router";
+
+import { Text } from "@/components/ui/text";
+import { Button } from "@/components/ui/button";
+import { ChartList } from "@/components/ChartList";
+import { useLocation } from "@/hooks";
+import { useLocationStore, useSettingsStore } from "@/stores";
+import { ENSEMBLE_MODELS } from "@/services/openMeteo";
+import { Ionicons } from "@expo/vector-icons";
+import { useResolvedColorScheme } from "@/lib/useResolvedColorScheme";
+
+export default function ForecastScreen() {
+  const router = useRouter();
+  const { latitude, longitude, findLocation } = useLocation();
+  const isSearching = useLocationStore((s) => s.isSearching);
+  const model = useSettingsStore((s) => s.model);
+  const { isDark } = useResolvedColorScheme();
+
+  const iconColor = isDark ? "#38bdf8" : "#0891b2";
+
+  useEffect(() => {
+    if (latitude === 0 && longitude === 0) {
+      findLocation();
+    }
+  }, [latitude, longitude, findLocation]);
+
+  const coordsLabel =
+    latitude !== 0 || longitude !== 0
+      ? `${latitude.toFixed(2)}, ${longitude.toFixed(2)}`
+      : "Locating\u2026";
+
+  return (
+    <View className="flex-1 bg-background">
+      <View className="flex-row items-center justify-between px-4 py-2 border-b border-border">
+        <View className="flex-1 mr-2">
+          <Text variant="muted" className="text-xs">
+            {ENSEMBLE_MODELS[model]} {"\u00B7"} {coordsLabel}
+          </Text>
+        </View>
+        <View className="flex-row gap-1">
+          <Button
+            variant="ghost"
+            size="icon"
+            onPress={findLocation}
+            disabled={isSearching}
+          >
+            <Ionicons
+              name={isSearching ? "hourglass-outline" : "locate-outline"}
+              size={20}
+              color={iconColor}
+            />
+          </Button>
+          <Button variant="ghost" size="icon" onPress={() => router.push("/map")}>
+            <Ionicons name="map-outline" size={20} color={iconColor} />
+          </Button>
+        </View>
+      </View>
+
+      <ChartList />
+    </View>
+  );
+}
