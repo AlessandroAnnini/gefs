@@ -14,7 +14,7 @@ import { useShallow } from "zustand/react/shallow";
 import { Ionicons } from "@expo/vector-icons";
 import { useResolvedColorScheme } from "@/lib/useResolvedColorScheme";
 
-const FORECAST_DAY_OPTIONS = [3, 5, 7, 10, 14, 16];
+const FORECAST_DAY_OPTIONS = [3, 5, 7, 10, 14];
 const COLOR_SCHEME_OPTIONS = ["system", "light", "dark"] as const;
 
 function OptionRow({
@@ -175,7 +175,7 @@ export default function SettingsScreen() {
         </Card>
 
         <Text variant="muted" className="text-center mt-2">
-          v3.0.0
+          v3.2.0
         </Text>
       </View>
     </ScrollView>

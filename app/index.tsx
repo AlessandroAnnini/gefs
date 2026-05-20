@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { View } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 
 import { Text } from "@/components/ui/text";
@@ -32,7 +33,7 @@ export default function ForecastScreen() {
       : "Locating\u2026";
 
   return (
-    <View className="flex-1 bg-background">
+    <SafeAreaView className="flex-1 bg-background" edges={["top"]}>
       <View className="flex-row items-center justify-between px-4 py-2 border-b border-border">
         <View className="flex-1 mr-2">
           <Text variant="muted" className="text-xs">
@@ -40,6 +41,9 @@ export default function ForecastScreen() {
           </Text>
         </View>
         <View className="flex-row gap-1">
+          <Button variant="ghost" size="icon" onPress={() => router.push("/settings")}>
+            <Ionicons name="settings-outline" size={20} color={iconColor} />
+          </Button>
           <Button
             variant="ghost"
             size="icon"
@@ -59,6 +63,6 @@ export default function ForecastScreen() {
       </View>
 
       <ChartList />
-    </View>
+    </SafeAreaView>
   );
 }

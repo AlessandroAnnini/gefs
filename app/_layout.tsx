@@ -64,13 +64,29 @@ function RootLayoutNav() {
                 headerShown: false,
               }}
             >
-              <Stack.Screen name="(tabs)" />
+              <Stack.Screen name="index" />
+              <Stack.Screen
+                name="settings"
+                options={{
+                  presentation: "modal",
+                  headerShown: true,
+                  title: "Settings",
+                  headerStyle: {
+                    backgroundColor: isDark ? "hsl(222, 47%, 6%)" : "hsl(0, 0%, 100%)",
+                  },
+                  headerTintColor: isDark ? "hsl(210, 40%, 98%)" : "hsl(240, 10%, 3.9%)",
+                }}
+              />
               <Stack.Screen
                 name="map"
                 options={{
                   presentation: "modal",
                   headerShown: true,
                   title: "Pick Location",
+                  headerStyle: {
+                    backgroundColor: isDark ? "hsl(222, 47%, 6%)" : "hsl(0, 0%, 100%)",
+                  },
+                  headerTintColor: isDark ? "hsl(210, 40%, 98%)" : "hsl(240, 10%, 3.9%)",
                 }}
               />
             </Stack>
