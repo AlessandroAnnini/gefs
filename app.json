@@ -1,32 +1,51 @@
 {
   "expo": {
-    "name": "gefs",
+    "name": "GEFS",
     "slug": "gefs",
-    "version": "2.0.0",
-    "icon": "./assets/icon.png",
-    "userInterfaceStyle": "automatic",
+    "version": "3.1.0",
     "orientation": "default",
+    "icon": "./assets/images/icon.png",
+    "scheme": "gefs",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
     "splash": {
-      "image": "./assets/splash.png",
+      "image": "./assets/images/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#0c4a6e"
     },
-    "updates": {
-      "fallbackToCacheTimeout": 0
-    },
-    "assetBundlePatterns": ["**/*"],
     "ios": {
       "supportsTablet": true
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#FFFFFF"
+        "foregroundImage": "./assets/images/adaptive-icon.png",
+        "backgroundColor": "#0c4a6e"
       },
-      "package": "com.sunrising.gefs"
+      "edgeToEdgeEnabled": true,
+      "package": "com.alessandroannini.gefs",
+      "config": {
+        "googleMaps": {
+          "apiKey": "AIzaSyDOk-6HnjMttMkrD-WTiFgLahQb_lJxDGM"
+        }
+      }
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "bundler": "metro",
+      "output": "static",
+      "favicon": "./assets/images/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Allow GEFS to use your location for weather forecasts."
+        }
+      ],
+      "expo-screen-orientation"
+    ],
+    "experiments": {
+      "typedRoutes": true
     }
   }
 }
