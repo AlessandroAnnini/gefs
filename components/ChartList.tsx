@@ -67,10 +67,15 @@ export function ChartList() {
       refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={() => refetch()} />}
     >
       {variables.map((v: WeatherVariable) => (
-        <View key={v} className="mb-1" style={{ height: 300 }}>
+        <View
+          key={v}
+          className="mb-4"
+          style={{ height: v === "precipitation" ? 380 : 300 }}
+        >
           <EnsembleChart hourly={data.hourly} variable={v} />
         </View>
       ))}
+      <View style={{ height: 48 }} />
     </ScrollView>
   );
 }
