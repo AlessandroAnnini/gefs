@@ -2,17 +2,12 @@
   "expo": {
     "name": "GEFS",
     "slug": "gefs",
-    "version": "3.1.0",
+    "version": "3.2.0",
     "orientation": "default",
     "icon": "./assets/images/icon.png",
     "scheme": "gefs",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
-    "splash": {
-      "image": "./assets/images/splash-icon.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#0c4a6e"
-    },
     "ios": {
       "supportsTablet": true
     },
@@ -42,7 +37,15 @@
           "locationAlwaysAndWhenInUsePermission": "Allow GEFS to use your location for weather forecasts."
         }
       ],
-      "expo-screen-orientation"
+      "expo-screen-orientation",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#0c4a6e",
+          "image": "./assets/images/splash-icon.png",
+          "imageWidth": 200
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true
