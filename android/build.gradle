@@ -22,3 +22,21 @@ allprojects {
 
 apply plugin: "expo-root-project"
 apply plugin: "com.facebook.react.rootproject"
+
+// Expo's createExpoConfig / Metro embed need NODE_ENV when Gradle is invoked directly.
+gradle.taskGraph.whenReady { graph ->
+  def buildingRelease = graph.allTasks.any { it.name.toLowerCase().contains("release") }
+  def fallbackNodeEnv = buildingRelease ? "production" : "development"
+  def nodeEnv = System.getenv("NODE_ENV") ?: fallbackNodeEnv
+
+  graph.allTasks.each { task ->
+    if (!(task instanceof Exec)) return
+    if (task.name == "createExpoConfig") {
+      task.environment "NODE_ENV", nodeEnv
+    } else if (task.name.contains("createBundleReleaseJsAndAssets")) {
+      task.environment "NODE_ENV", "production"
+    } else if (task.name.contains("createBundleDebugJsAndAssets")) {
+      task.environment "NODE_ENV", System.getenv("NODE_ENV") ?: "development"
+    }
+  }
+}

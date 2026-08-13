@@ -1,4 +1,4 @@
-import { Pressable, ScrollView, View } from "react-native";
+import { Platform, Pressable, ScrollView, View } from "react-native";
 import { Text } from "@/components/ui/text";
 import { Card } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
@@ -16,7 +16,35 @@ import { useShallow } from "zustand/react/shallow";
 import { Ionicons } from "@expo/vector-icons";
 import { useResolvedColorScheme } from "@/lib/useResolvedColorScheme";
 import Constants from "expo-constants";
+
 const COLOR_SCHEME_OPTIONS = ["system", "light", "dark"] as const;
+
+function appInfoLines(): string[] {
+  const name = Constants.expoConfig?.name ?? "GEFS";
+  const version =
+    Constants.nativeApplicationVersion ??
+    Constants.expoConfig?.version ??
+    "—";
+  const build = Constants.nativeBuildVersion;
+  const packageId =
+    Platform.OS === "ios"
+      ? Constants.expoConfig?.ios?.bundleIdentifier
+      : Constants.expoConfig?.android?.package;
+  const platform =
+    Platform.OS === "ios"
+      ? `iOS ${String(Platform.Version)}`
+      : Platform.OS === "android"
+        ? `Android API ${String(Platform.Version)}`
+        : Platform.OS;
+
+  return [
+    name,
+    build ? `Version ${version} (${build})` : `Version ${version}`,
+    packageId,
+    platform,
+    "Data: Open-Meteo",
+  ].filter((line): line is string => Boolean(line));
+}
 
 function OptionRow({
   label,
@@ -175,9 +203,13 @@ export default function SettingsScreen() {
           />
         </Card>
 
-        <Text variant="muted" className="text-center mt-2">
-          v{Constants.expoConfig?.version ?? "3.2.0"}
-        </Text>
+        <View className="mt-4 mb-8 items-center gap-1">
+          {appInfoLines().map((line) => (
+            <Text key={line} variant="muted" className="text-center">
+              {line}
+            </Text>
+          ))}
+        </View>
       </View>
     </ScrollView>
   );
