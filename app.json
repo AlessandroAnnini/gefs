@@ -20,7 +20,7 @@
       "package": "com.alessandroannini.gefs",
       "config": {
         "googleMaps": {
-          "apiKey": "AIzaSyDOk-6HnjMttMkrD-WTiFgLahQb_lJxDGM"
+          "apiKey": ""
         }
       }
     },
@@ -34,7 +34,7 @@
       [
         "expo-location",
         {
-          "locationAlwaysAndWhenInUsePermission": "Allow GEFS to use your location for weather forecasts."
+          "locationWhenInUsePermission": "Allow GEFS to use your location for weather forecasts."
         }
       ],
       "expo-screen-orientation",

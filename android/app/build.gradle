@@ -3,6 +3,27 @@ apply plugin: "org.jetbrains.kotlin.android"
 apply plugin: "com.facebook.react"
 
 def projectRoot = rootDir.getAbsoluteFile().getParentFile().getAbsolutePath()
+def projectRootDir = rootDir.getAbsoluteFile().getParentFile()
+
+def keystorePropertiesFile = new File(projectRootDir, "keystore.properties")
+def keystoreProperties = new Properties()
+def hasReleaseKeystore = keystorePropertiesFile.exists()
+if (hasReleaseKeystore) {
+    keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+}
+
+def mapsApiKey = System.getenv("GOOGLE_MAPS_API_KEY") ?: ""
+if (mapsApiKey.isEmpty()) {
+    def envFile = new File(projectRootDir, ".env")
+    if (envFile.exists()) {
+        envFile.eachLine { line ->
+            def trimmed = line.trim()
+            if (trimmed.startsWith("GOOGLE_MAPS_API_KEY=")) {
+                mapsApiKey = trimmed.substring("GOOGLE_MAPS_API_KEY=".length()).replaceAll(/^["']|["']$/, "")
+            }
+        }
+    }
+}
 
 /**
  * This is the configuration block to customize your React Native Android app.
@@ -92,8 +113,9 @@ android {
         applicationId 'com.alessandroannini.gefs'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "3.0.0"
+        versionCode 32
+        versionName "3.2.0"
+        manifestPlaceholders = [GOOGLE_MAPS_API_KEY: mapsApiKey]
 
         buildConfigField "String", "REACT_NATIVE_RELEASE_LEVEL", "\"${findProperty('reactNativeReleaseLevel') ?: 'stable'}\""
     }
@@ -104,15 +126,26 @@ android {
             keyAlias 'androiddebugkey'
             keyPassword 'android'
         }
+        if (hasReleaseKeystore) {
+            release {
+                keyAlias keystoreProperties['keyAlias']
+                keyPassword keystoreProperties['keyPassword']
+                storeFile file(new File(projectRootDir, keystoreProperties['storeFile']))
+                storePassword keystoreProperties['storePassword']
+            }
+        }
     }
     buildTypes {
         debug {
             signingConfig signingConfigs.debug
         }
         release {
-            // Caution! In production, you need to generate your own keystore file.
-            // see https://reactnative.dev/docs/signed-apk-android.
-            signingConfig signingConfigs.debug
+            if (hasReleaseKeystore) {
+                signingConfig signingConfigs.release
+            } else {
+                logger.warn("keystore.properties not found; release APK will use the debug keystore. Copy keystore.properties.example to keystore.properties for a production key.")
+                signingConfig signingConfigs.debug
+            }
             def enableShrinkResources = findProperty('android.enableShrinkResourcesInReleaseBuilds') ?: 'false'
             shrinkResources enableShrinkResources.toBoolean()
             minifyEnabled enableMinifyInReleaseBuilds

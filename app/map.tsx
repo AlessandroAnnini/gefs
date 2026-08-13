@@ -6,31 +6,37 @@ import { Ionicons } from "@expo/vector-icons";
 
 import { Button } from "@/components/ui/button";
 import { Text } from "@/components/ui/text";
-import { useLocationStore, useSettingsStore } from "@/stores";
+import { useLocationStore } from "@/stores";
 import { useResolvedColorScheme } from "@/lib/useResolvedColorScheme";
+
+const FALLBACK_LAT = 48.85;
+const FALLBACK_LON = 2.35;
 
 export default function MapScreen() {
   const router = useRouter();
-  const { latitude, longitude, setLocation } = useLocationStore();
-  const setIsLocationFromMap = useSettingsStore((s) => s.setIsLocationFromMap);
+  const latitude = useLocationStore((s) => s.latitude);
+  const longitude = useLocationStore((s) => s.longitude);
+  const setLocation = useLocationStore((s) => s.setLocation);
 
   const { isDark } = useResolvedColorScheme();
-  const [center, setCenter] = useState({ latitude, longitude });
+  const [center, setCenter] = useState({
+    latitude: latitude ?? FALLBACK_LAT,
+    longitude: longitude ?? FALLBACK_LON,
+  });
 
   const initialRegion = useMemo(() => {
     const { width, height } = Dimensions.get("window");
     const latDelta = 2;
     return {
-      latitude: latitude || 48.85,
-      longitude: longitude || 2.35,
+      latitude: latitude ?? FALLBACK_LAT,
+      longitude: longitude ?? FALLBACK_LON,
       latitudeDelta: latDelta,
       longitudeDelta: latDelta * (width / height),
     };
-  }, []);
+  }, [latitude, longitude]);
 
   const handleConfirm = () => {
     setLocation(center.latitude, center.longitude);
-    setIsLocationFromMap(true);
     router.back();
   };
 
@@ -41,11 +47,11 @@ export default function MapScreen() {
         mapType="standard"
         userInterfaceStyle={isDark ? "dark" : "light"}
         initialRegion={initialRegion}
-        onRegionChange={(r) => setCenter({ latitude: r.latitude, longitude: r.longitude })}
-        onRegionChangeComplete={(r) => setCenter({ latitude: r.latitude, longitude: r.longitude })}
+        onRegionChangeComplete={(r) =>
+          setCenter({ latitude: r.latitude, longitude: r.longitude })
+        }
       />
 
-      {/* Fixed crosshair pin always at screen center */}
       <View
         pointerEvents="none"
         style={{

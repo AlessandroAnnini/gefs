@@ -36,6 +36,22 @@ export const ENSEMBLE_MODELS = {
 
 export type EnsembleModel = keyof typeof ENSEMBLE_MODELS;
 
+export const FORECAST_DAY_OPTIONS = [3, 5, 7, 10, 14] as const;
+
+/** Longest horizon that currently returns a full control run (no trailing nulls). */
+export const MODEL_MAX_DAYS: Record<EnsembleModel, number> = {
+  ecmwf_ifs025: 14,
+  gfs025: 10,
+  icon_seamless: 7,
+};
+
+export function clampForecastDays(days: number, model: EnsembleModel): number {
+  const max = MODEL_MAX_DAYS[model];
+  const allowed = FORECAST_DAY_OPTIONS.filter((d) => d <= max);
+  const capped = Math.min(days, max);
+  return allowed.reduce((best, d) => (d <= capped ? d : best), allowed[0]);
+}
+
 export interface EnsembleResponse {
   latitude: number;
   longitude: number;
@@ -48,28 +64,107 @@ export interface EnsembleResponse {
 }
 
 export interface EnsembleSeries {
-  time: string[];
+  time: number[];
   control: (number | null)[];
   members: (number | null)[][];
 }
 
+export interface CivilParts {
+  year: number;
+  month: number;
+  date: number;
+  day: number;
+  hours: number;
+}
+
+/** Interpret a UNIX timestamp in the forecast location's timezone. */
+export function civilParts(unixSeconds: number, utcOffsetSeconds: number): CivilParts {
+  const d = new Date((unixSeconds + utcOffsetSeconds) * 1000);
+  return {
+    year: d.getUTCFullYear(),
+    month: d.getUTCMonth(),
+    date: d.getUTCDate(),
+    day: d.getUTCDay(),
+    hours: d.getUTCHours(),
+  };
+}
+
 const MEMBER_COUNT = 50;
+
+function parseUnixTimes(raw: (number | null)[] | undefined): number[] {
+  if (!raw) return [];
+  const out: number[] = [];
+  for (const t of raw) {
+    if (typeof t === "number" && Number.isFinite(t)) out.push(t);
+  }
+  return out;
+}
+
+function hasValueAt(
+  control: (number | null)[],
+  members: (number | null)[][],
+  t: number
+): boolean {
+  if (control[t] != null) return true;
+  for (const m of members) {
+    if (m[t] != null) return true;
+  }
+  return false;
+}
+
+function collectMembers(
+  hourly: Record<string, (number | null)[]>,
+  variable: WeatherVariable
+): (number | null)[][] {
+  const members: (number | null)[][] = [];
+  for (let i = 1; i <= MEMBER_COUNT; i++) {
+    const key = `${variable}_member${String(i).padStart(2, "0")}`;
+    if (hourly[key]) members.push(hourly[key]);
+  }
+  return members;
+}
+
+export function lastDataIndex(
+  hourly: Record<string, (number | null)[]>,
+  variable: WeatherVariable
+): number {
+  const control = hourly[variable] ?? [];
+  const members = collectMembers(hourly, variable);
+  const len = Math.min((hourly.time ?? []).length, control.length);
+  let last = -1;
+  for (let t = 0; t < len; t++) {
+    if (hasValueAt(control, members, t)) last = t;
+  }
+  return last;
+}
+
+/** Slice every hourly series to a shared length so all charts share the same time index. */
+export function trimHourlyToSharedTail(
+  hourly: Record<string, (number | null)[]>,
+  variables: WeatherVariable[]
+): Record<string, (number | null)[]> {
+  if (variables.length === 0) return hourly;
+  let last = -1;
+  for (const v of variables) {
+    last = Math.max(last, lastDataIndex(hourly, v));
+  }
+  const timeLen = (hourly.time ?? []).length;
+  const length = last < 0 ? 0 : Math.min(last + 1, timeLen);
+  if (length === timeLen) return hourly;
+  const sliced: Record<string, (number | null)[]> = {};
+  for (const [key, series] of Object.entries(hourly)) {
+    sliced[key] = series.slice(0, length);
+  }
+  return sliced;
+}
 
 export function parseEnsembleSeries(
   hourly: Record<string, (number | null)[]>,
   variable: WeatherVariable
 ): EnsembleSeries {
-  const time = hourly.time as unknown as string[];
+  const time = parseUnixTimes(hourly.time);
   const control = hourly[variable] ?? [];
-  const members: (number | null)[][] = [];
-
-  for (let i = 1; i <= MEMBER_COUNT; i++) {
-    const key = `${variable}_member${String(i).padStart(2, "0")}`;
-    if (hourly[key]) {
-      members.push(hourly[key]);
-    }
-  }
-
+  const members = collectMembers(hourly, variable);
   return { time, control, members };
 }
 
@@ -102,6 +197,43 @@ export function computePercentiles(
   return { low, high };
 }
 
+/** One sort per timestep for the standard ensemble bands. */
+export function computeBands(
+  members: (number | null)[][],
+  control: (number | null)[]
+): {
+  p10: (number | null)[];
+  p25: (number | null)[];
+  p75: (number | null)[];
+  p90: (number | null)[];
+} {
+  const len = control.length;
+  const p10: (number | null)[] = new Array(len);
+  const p25: (number | null)[] = new Array(len);
+  const p75: (number | null)[] = new Array(len);
+  const p90: (number | null)[] = new Array(len);
+
+  for (let t = 0; t < len; t++) {
+    const vals: number[] = [];
+    if (control[t] != null) vals.push(control[t]!);
+    for (const m of members) {
+      if (m[t] != null) vals.push(m[t]!);
+    }
+    if (vals.length === 0) {
+      p10[t] = p25[t] = p75[t] = p90[t] = null;
+      continue;
+    }
+    vals.sort((a, b) => a - b);
+    const last = vals.length - 1;
+    p10[t] = vals[Math.floor(0.1 * last)];
+    p25[t] = vals[Math.floor(0.25 * last)];
+    p75[t] = vals[Math.ceil(0.75 * last)];
+    p90[t] = vals[Math.ceil(0.9 * last)];
+  }
+
+  return { p10, p25, p75, p90 };
+}
+
 /**
  * Compute the fraction of ensemble members that produce any value >= threshold
  * within a rolling window. This answers "what % chance of rain in the next N hours"
@@ -121,14 +253,14 @@ export function computeWindowProbability(
     let total = 0;
     let membersExceeding = 0;
 
-    const controlHits = controlExceedsInWindow(control, threshold, t, end);
+    const controlHits = exceedsInWindow(control, threshold, t, end);
     if (controlHits !== null) {
       total++;
       if (controlHits) membersExceeding++;
     }
 
     for (const m of members) {
-      const hasData = memberExceedsInWindow(m, threshold, t, end);
+      const hasData = exceedsInWindow(m, threshold, t, end);
       if (hasData !== null) {
         total++;
         if (hasData) membersExceeding++;
@@ -141,23 +273,7 @@ export function computeWindowProbability(
   return result;
 }
 
-function controlExceedsInWindow(
-  arr: (number | null)[],
-  threshold: number,
-  start: number,
-  end: number
-): boolean | null {
-  let hasData = false;
-  for (let i = start; i < end; i++) {
-    if (arr[i] != null) {
-      hasData = true;
-      if (arr[i]! >= threshold) return true;
-    }
-  }
-  return hasData ? false : null;
-}
-
-function memberExceedsInWindow(
+function exceedsInWindow(
   arr: (number | null)[],
   threshold: number,
   start: number,
@@ -180,19 +296,19 @@ export interface TempAlert {
 
 /**
  * Find timesteps where any ensemble member crosses frost (<0°C) or heat (>35°C) thresholds.
- * Samples every 6 hours to avoid clutter.
+ * Samples every 6 hours (location local time) to avoid clutter.
  */
 export function detectTempAlerts(
   members: (number | null)[][],
   control: (number | null)[],
-  time: string[]
+  time: number[],
+  utcOffsetSeconds: number
 ): TempAlert[] {
   const alerts: TempAlert[] = [];
   const len = control.length;
 
   for (let t = 0; t < len; t++) {
-    const d = new Date(time[t]);
-    if (d.getHours() % 6 !== 0) continue;
+    if (civilParts(time[t], utcOffsetSeconds).hours % 6 !== 0) continue;
 
     let minVal = control[t] ?? Infinity;
     let maxVal = control[t] ?? -Infinity;
@@ -203,8 +319,9 @@ export function detectTempAlerts(
       }
     }
 
+    if (minVal === Infinity) continue;
     if (minVal < 0) alerts.push({ idx: t, type: "frost" });
-    else if (maxVal > 35) alerts.push({ idx: t, type: "heat" });
+    if (maxVal > 35) alerts.push({ idx: t, type: "heat" });
   }
   return alerts;
 }
@@ -219,12 +336,13 @@ export interface DailyRain {
 /**
  * Sum hourly precipitation into daily totals across all ensemble members,
  * then return the median, P10, and P90 of daily totals.
- * Groups by local calendar day.
+ * Groups by the forecast location's calendar day. Null hours are skipped.
  */
 export function computeDailyRain(
   members: (number | null)[][],
   control: (number | null)[],
-  time: string[]
+  time: number[],
+  utcOffsetSeconds: number
 ): DailyRain[] {
   if (time.length === 0) return [];
 
@@ -236,13 +354,13 @@ export function computeDailyRain(
   const hourToDay: number[] = new Array(time.length);
 
   for (let t = 0; t < time.length; t++) {
-    const d = new Date(time[t]);
-    const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+    const p = civilParts(time[t], utcOffsetSeconds);
+    const key = `${p.year}-${p.month}-${p.date}`;
     let idx = dayKeys.indexOf(key);
     if (idx === -1) {
       idx = dayKeys.length;
       dayKeys.push(key);
-      dayLabels.push(`${dayNames[d.getDay()]} ${d.getDate()}`);
+      dayLabels.push(`${dayNames[p.day]} ${p.date}`);
     }
     hourToDay[t] = idx;
   }
@@ -253,7 +371,7 @@ export function computeDailyRain(
   for (const series of allSeries) {
     const sums = new Array(numDays).fill(0);
     for (let t = 0; t < time.length; t++) {
-      sums[hourToDay[t]] += series[t] ?? 0;
+      if (series[t] != null) sums[hourToDay[t]] += series[t]!;
     }
     dailyTotalsPerMember.push(sums);
   }
@@ -282,16 +400,20 @@ async function fetchEnsemble(
   model: EnsembleModel,
   days: number
 ): Promise<EnsembleResponse> {
-  const allVars = [...variables];
-  if (variables.includes("wind_speed_10m") && !allVars.includes("wind_gusts_10m" as any)) {
-    allVars.push("wind_gusts_10m" as any);
+  const allVars: string[] = [...variables];
+  if (variables.includes("wind_speed_10m")) {
+    for (const extra of AUXILIARY_VARIABLES) {
+      if (!allVars.includes(extra)) allVars.push(extra);
+    }
   }
   const params = new URLSearchParams({
     latitude: lat.toFixed(4),
     longitude: lon.toFixed(4),
     hourly: allVars.join(","),
     models: model,
-    forecast_days: days.toString(),
+    forecast_days: clampForecastDays(days, model).toString(),
+    timezone: "auto",
+    timeformat: "unixtime",
   });
   const res = await fetch(`${ENSEMBLE_BASE}?${params}`);
   if (!res.ok) {
@@ -301,17 +423,24 @@ async function fetchEnsemble(
 }
 
 export function useEnsembleData(
-  lat: number,
-  lon: number,
+  lat: number | null,
+  lon: number | null,
   variables: WeatherVariable[],
   model: EnsembleModel = "ecmwf_ifs025",
   days: number = 7
 ) {
   const variablesKey = variables.slice().sort().join(",");
   return useQuery({
-    queryKey: ["ensemble", lat.toFixed(4), lon.toFixed(4), model, days, variablesKey],
-    queryFn: () => fetchEnsemble(lat, lon, variables, model, days),
-    enabled: lat !== 0 || lon !== 0,
+    queryKey: [
+      "ensemble",
+      lat?.toFixed(4) ?? "none",
+      lon?.toFixed(4) ?? "none",
+      model,
+      days,
+      variablesKey,
+    ],
+    queryFn: () => fetchEnsemble(lat!, lon!, variables, model, days),
+    enabled: lat != null && lon != null,
     staleTime: 30 * 60 * 1000,
     refetchInterval: 60 * 60 * 1000,
   });

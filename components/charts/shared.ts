@@ -1,58 +1,117 @@
-import { useState, useMemo } from "react";
-import { useFont } from "@shopify/react-native-skia";
+import { useMemo, useState } from "react";
+import type { SkFont } from "@shopify/react-native-skia";
 import { useChartPressState } from "victory-native";
 import { useAnimatedReaction, runOnJS } from "react-native-reanimated";
 import { useResolvedColorScheme } from "@/lib/useResolvedColorScheme";
-import { useSettingsStore } from "@/stores";
 import {
   type WeatherVariable,
-  VARIABLE_UNITS,
   parseEnsembleSeries,
+  civilParts,
+  computeBands,
 } from "@/services/openMeteo";
+import { useChartSync } from "./ChartSync";
 
 export type ChartDatum = Record<string, number>;
 
 export interface ChartProps {
   hourly: Record<string, (number | null)[]>;
   variable: WeatherVariable;
+  utcOffsetSeconds: number;
 }
 
-export interface TooltipState {
-  idx: number;
-  xPos: number;
-  yPos: number;
+export const CHART_PAD = {
+  leftWithUnits: 40,
+  left: 24,
+  right: 8,
+} as const;
+
+export function chartPlotPadding(showYAxisUnits: boolean) {
+  return {
+    left: showYAxisUnits ? CHART_PAD.leftWithUnits : CHART_PAD.left,
+    right: CHART_PAD.right,
+    top: 8,
+    bottom: 22,
+  };
 }
 
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const MAX_MEMBER_LINES = 8;
 
-export function formatDayLabel(iso: string): string {
-  const d = new Date(iso);
-  return `${DAY_NAMES[d.getDay()]} ${d.getDate()}`;
+export function chartValue(v: number | null | undefined): number {
+  return v == null ? Number.NaN : v;
 }
 
-export function formatDateTime(iso: string): string {
-  const d = new Date(iso);
-  const day = DAY_NAMES[d.getDay()];
-  const date = d.getDate();
-  const h = d.getHours().toString().padStart(2, "0");
-  return `${day} ${date}, ${h}:00`;
+export function formatDayLabel(unixSeconds: number, utcOffsetSeconds: number): string {
+  const p = civilParts(unixSeconds, utcOffsetSeconds);
+  return `${DAY_NAMES[p.day]} ${p.date}`;
 }
 
-export function findNowIndex(time: string[]): number | null {
+export function formatDateTime(unixSeconds: number, utcOffsetSeconds: number): string {
+  const p = civilParts(unixSeconds, utcOffsetSeconds);
+  const h = p.hours.toString().padStart(2, "0");
+  return `${DAY_NAMES[p.day]} ${p.date}, ${h}:00`;
+}
+
+export function findNowIndex(time: number[]): number | null {
   if (time.length === 0) return null;
-  const now = Date.now();
-  const first = new Date(time[0]).getTime();
-  const last = new Date(time[time.length - 1]).getTime();
-  if (now < first || now > last) return null;
+  const now = Date.now() / 1000;
+  if (now < time[0] || now > time[time.length - 1]) return null;
 
   for (let i = 0; i < time.length - 1; i++) {
-    const t0 = new Date(time[i]).getTime();
-    const t1 = new Date(time[i + 1]).getTime();
-    if (now >= t0 && now <= t1) {
-      return i + (now - t0) / (t1 - t0);
+    if (now >= time[i] && now <= time[i + 1]) {
+      const span = time[i + 1] - time[i];
+      return span === 0 ? i : i + (now - time[i]) / span;
     }
   }
   return null;
+}
+
+export function buildEnsembleData(
+  control: (number | null)[],
+  members: (number | null)[][],
+  gustControl?: (number | null)[]
+): { data: ChartDatum[]; yKeys: string[]; memberKeys: string[]; hasGusts: boolean } {
+  const { p10, p25, p75, p90 } = computeBands(members, control);
+  const subset = members.slice(0, MAX_MEMBER_LINES);
+  const hasGusts = !!gustControl && gustControl.length > 0;
+
+  const memberKeys = subset.map((_, i) => `m${i}`);
+  const yKeys = ["control", "p10", "p90", "p25", "p75", ...memberKeys];
+  if (hasGusts) yKeys.push("gusts");
+
+  const data: ChartDatum[] = new Array(control.length);
+  for (let t = 0; t < control.length; t++) {
+    const datum: ChartDatum = {
+      idx: t,
+      control: chartValue(control[t]),
+      p10: chartValue(p10[t]),
+      p90: chartValue(p90[t]),
+      p25: chartValue(p25[t]),
+      p75: chartValue(p75[t]),
+    };
+    for (let i = 0; i < subset.length; i++) {
+      datum[memberKeys[i]] = chartValue(subset[i][t]);
+    }
+    if (hasGusts) {
+      datum.gusts = chartValue(gustControl![t]);
+    }
+    data[t] = datum;
+  }
+
+  return { data, yKeys, memberKeys, hasGusts };
+}
+
+/** Press tracking keys only — members are visual-only. */
+export function pressInitY(hasGusts = false): Record<string, number> {
+  const y: Record<string, number> = {
+    control: 0,
+    p10: 0,
+    p90: 0,
+    p25: 0,
+    p75: 0,
+  };
+  if (hasGusts) y.gusts = 0;
+  return y;
 }
 
 export function useChartColors() {
@@ -72,19 +131,12 @@ export function useChartColors() {
       frost: "rgba(96,165,250,0.9)",
       heat: "rgba(248,113,113,0.9)",
       probLine: isDark ? "#a78bfa" : "#7c3aed",
-      probFill: isDark ? "rgba(167,139,250,0.10)" : "rgba(124,58,237,0.08)",
-      probAxis: isDark ? "#a78bfa" : "#7c3aed",
-      barRange: isDark ? "rgba(56,189,248,0.15)" : "rgba(8,145,178,0.12)",
     }),
     [isDark]
   );
 }
 
-export function useChartFonts() {
-  const axisFont = useFont(require("../../assets/fonts/SpaceMono-Regular.ttf"), 11);
-  const alertFont = useFont(require("../../assets/fonts/SpaceMono-Regular.ttf"), 10);
-  return { axisFont, alertFont };
-}
+export { useChartFonts } from "./ChartFonts";
 
 export function useSeriesData(
   hourly: Record<string, (number | null)[]>,
@@ -97,9 +149,10 @@ export function useSeriesData(
 }
 
 export function useXAxisConfig(
-  time: string[],
-  axisFont: ReturnType<typeof useFont>,
-  colors: ReturnType<typeof useChartColors>
+  time: number[],
+  axisFont: SkFont | null,
+  colors: ReturnType<typeof useChartColors>,
+  utcOffsetSeconds: number
 ) {
   return useMemo(
     () => ({
@@ -111,42 +164,55 @@ export function useXAxisConfig(
       formatXLabel: (val: any) => {
         const i = Math.round(val as number);
         if (i < 0 || i >= time.length) return "";
-        const d = new Date(time[i]);
-        if (d.getHours() !== 0 && d.getHours() !== 12) return "";
-        return formatDayLabel(time[i]);
+        const hours = civilParts(time[i], utcOffsetSeconds).hours;
+        if (hours !== 0 && hours !== 12) return "";
+        return formatDayLabel(time[i], utcOffsetSeconds);
       },
     }),
-    [time, axisFont, colors.axis, colors.grid]
+    [time, axisFont, colors.axis, colors.grid, utcOffsetSeconds]
   );
 }
 
 export function useTooltipPress(initY: Record<string, number>) {
+  const { syncIdx } = useChartSync();
   const { state: pressState, isActive } = useChartPressState({
     x: 0 as number,
     y: initY,
   });
 
-  const [tooltip, setTooltip] = useState<TooltipState | null>(null);
-
   useAnimatedReaction(
     () => ({
       active: pressState.isActive.value,
-      xVal: pressState.x.value.value,
-      xPos: pressState.x.position.value,
-      yPos: pressState.y.control.position.value,
+      xVal: pressState.x.value.value as number,
     }),
-    (cur) => {
+    (cur, prev) => {
       if (cur.active) {
-        runOnJS(setTooltip)({
-          idx: Math.round(cur.xVal as number),
-          xPos: cur.xPos,
-          yPos: cur.yPos,
-        });
-      } else {
-        runOnJS(setTooltip)(null);
+        syncIdx.value = cur.xVal;
+      } else if (prev?.active) {
+        syncIdx.value = -1;
       }
     }
   );
 
-  return { pressState, isActive, tooltip };
+  return { pressState, isActive };
+}
+
+/** Rounded sync index for tooltip text; updates only when the hour changes. */
+export function useSyncedTooltipIndex(): number | null {
+  const { syncIdx } = useChartSync();
+  const [tooltipIdx, setTooltipIdx] = useState<number | null>(null);
+
+  useAnimatedReaction(
+    () => {
+      const v = syncIdx.value;
+      return v < 0 ? -1 : Math.round(v);
+    },
+    (cur, prev) => {
+      if (cur === prev) return;
+      if (cur < 0) runOnJS(setTooltipIdx)(null);
+      else runOnJS(setTooltipIdx)(cur);
+    }
+  );
+
+  return tooltipIdx;
 }

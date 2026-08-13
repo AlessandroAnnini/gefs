@@ -5,6 +5,8 @@ import { Separator } from "@/components/ui/separator";
 import { useSettingsStore } from "@/stores";
 import {
   ENSEMBLE_MODELS,
+  FORECAST_DAY_OPTIONS,
+  MODEL_MAX_DAYS,
   WEATHER_VARIABLES,
   VARIABLE_LABELS,
   type EnsembleModel,
@@ -13,8 +15,7 @@ import {
 import { useShallow } from "zustand/react/shallow";
 import { Ionicons } from "@expo/vector-icons";
 import { useResolvedColorScheme } from "@/lib/useResolvedColorScheme";
-
-const FORECAST_DAY_OPTIONS = [3, 5, 7, 10, 14];
+import Constants from "expo-constants";
 const COLOR_SCHEME_OPTIONS = ["system", "light", "dark"] as const;
 
 function OptionRow({
@@ -106,7 +107,7 @@ export default function SettingsScreen() {
             Forecast Days
           </Text>
           <View className="flex-row flex-wrap gap-2">
-            {FORECAST_DAY_OPTIONS.map((d) => (
+            {FORECAST_DAY_OPTIONS.filter((d) => d <= MODEL_MAX_DAYS[model]).map((d) => (
               <Pressable
                 key={d}
                 onPress={() => setForecastDays(d)}
@@ -175,7 +176,7 @@ export default function SettingsScreen() {
         </Card>
 
         <Text variant="muted" className="text-center mt-2">
-          v3.2.0
+          v{Constants.expoConfig?.version ?? "3.2.0"}
         </Text>
       </View>
     </ScrollView>

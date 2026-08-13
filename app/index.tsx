@@ -7,30 +7,38 @@ import { Text } from "@/components/ui/text";
 import { Button } from "@/components/ui/button";
 import { ChartList } from "@/components/ChartList";
 import { useLocation } from "@/hooks";
-import { useLocationStore, useSettingsStore } from "@/stores";
+import { useLocationStore, useSettingsStore, useStoresHydrated } from "@/stores";
 import { ENSEMBLE_MODELS } from "@/services/openMeteo";
 import { Ionicons } from "@expo/vector-icons";
 import { useResolvedColorScheme } from "@/lib/useResolvedColorScheme";
 
 export default function ForecastScreen() {
   const router = useRouter();
+  const hydrated = useStoresHydrated();
   const { latitude, longitude, findLocation } = useLocation();
   const isSearching = useLocationStore((s) => s.isSearching);
+  const permissionDenied = useLocationStore((s) => s.permissionDenied);
+  const errorMessage = useLocationStore((s) => s.errorMessage);
   const model = useSettingsStore((s) => s.model);
   const { isDark } = useResolvedColorScheme();
 
   const iconColor = isDark ? "#38bdf8" : "#0891b2";
 
   useEffect(() => {
-    if (latitude === 0 && longitude === 0) {
+    if (!hydrated) return;
+    if (latitude == null || longitude == null) {
       findLocation();
     }
-  }, [latitude, longitude, findLocation]);
+  }, [hydrated, latitude, longitude, findLocation]);
 
   const coordsLabel =
-    latitude !== 0 || longitude !== 0
+    latitude != null && longitude != null
       ? `${latitude.toFixed(2)}, ${longitude.toFixed(2)}`
-      : "Locating\u2026";
+      : permissionDenied
+        ? "Location denied"
+        : errorMessage
+          ? "Location failed"
+          : "Locating\u2026";
 
   return (
     <SafeAreaView className="flex-1 bg-background" edges={["top"]}>

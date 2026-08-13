@@ -11,6 +11,9 @@ npm-debug.*
 web-build/
 .env
 .env.local
+keystore.properties
+*.keystore
+!android/app/debug.keystore
 
 # macOS
 .DS_Store
@@ -24,5 +27,7 @@ android/
 
 
 expo-env.d.ts
-# @end expo-cligefs-v*.apk
+# @end expo-cli
+
+gefs-v*.apk
 .cursor/
