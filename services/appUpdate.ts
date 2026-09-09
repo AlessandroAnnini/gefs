@@ -74,6 +74,10 @@ function compareSemver(a: string, b: string): number {
   return 0;
 }
 
+export function updateIdentity(update: AvailableUpdate): string {
+  return update.versionCode > 0 ? `c:${update.versionCode}` : `n:${update.versionName}`;
+}
+
 export function isNewerUpdate(update: AvailableUpdate): boolean {
   const localCode = localVersionCode();
   if (localCode > 0 && update.versionCode > 0) {

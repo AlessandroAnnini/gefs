@@ -1,14 +1,14 @@
 {
   "name": "gefs",
   "main": "expo-router/entry",
-  "version": "3.7.0",
+  "version": "3.8.0",
   "license": "AGPL-3.0-only",
   "scripts": {
     "start": "expo start",
     "android": "expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web",
-    "android:apk": "NODE_ENV=production ./android/gradlew -p android assembleRelease"
+    "android:apk": "node scripts/ensure-maps-api-key.js --require && NODE_ENV=production ./android/gradlew -p android assembleRelease"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",

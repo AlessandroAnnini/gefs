@@ -55,9 +55,11 @@ npx expo start
 | `npm run ios` | Debug build / run on iOS |
 | `npm run web` | Web (charts are built for native) |
 
-Maps need `GOOGLE_MAPS_API_KEY`. Forecasts do not. For a store-signed APK, copy `keystore.properties.example` to `keystore.properties` and point it at a real keystore.
+Maps need `GOOGLE_MAPS_API_KEY` in `.env` (local) or a GitHub Actions **secret** of the same name (release APKs). Forecasts do not. The key is substituted at Gradle time via `${GOOGLE_MAPS_API_KEY}` in the Android manifest. Do not paste the real key into `app.json` or commit a literal `AIza…` value. In Google Cloud, restrict the key to Android apps, package `com.alessandroannini.gefs`, and the signing-cert SHA-1.
 
-The sideload APK is **arm64-v8a only** (typical phones). Download the latest from [GitHub Releases](https://github.com/AlessandroAnnini/gefs/releases/latest). Pushing a `v*` tag builds that APK in GitHub Actions; add a `GOOGLE_MAPS_API_KEY` repository secret so maps work in the CI build. From 3.7.0, Android can check that Release and open the system installer. For an x86_64 emulator, override the ABI when running a debug build: `./android/gradlew -p android assembleDebug -PreactNativeArchitectures=x86_64`.
+For a store-signed APK, copy `keystore.properties.example` to `keystore.properties` and point it at a real keystore.
+
+The sideload APK is **arm64-v8a only** (typical phones). Download the latest from [GitHub Releases](https://github.com/AlessandroAnnini/gefs/releases/latest). Pushing a `v*` tag builds that APK in GitHub Actions. From 3.7.0, Android can check that Release and open the system installer. A fresh clone must run `npx expo prebuild --platform android` (or `npm run android`) before invoking Gradle directly. For an x86_64 emulator: `./android/gradlew -p android assembleDebug -PreactNativeArchitectures=x86_64`.
 
 ## Data and terms
 

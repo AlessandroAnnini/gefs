@@ -101,7 +101,7 @@ export default function SettingsScreen() {
   );
 
   const {
-    latest,
+    banner,
     checking,
     installing,
     progress,
@@ -217,9 +217,9 @@ export default function SettingsScreen() {
         {Platform.OS === "android" ? (
           <Card className="p-4 gap-3">
             <Text variant="h4">App update</Text>
-            {latest ? (
+            {banner ? (
               <Text>
-                Update available · {latest.versionName}
+                Update available · {banner.versionName}
               </Text>
             ) : (
               <Text variant="muted">
@@ -244,7 +244,7 @@ export default function SettingsScreen() {
               >
                 <Text>Check for update</Text>
               </Button>
-              {latest ? (
+              {banner ? (
                 <Button onPress={() => void install()} disabled={installing}>
                   <Text className="text-primary-foreground">
                     Download and install

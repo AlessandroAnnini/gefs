@@ -25,14 +25,23 @@ loadDotEnv();
 
 const appJson = require("./app.json");
 
+function isUsableMapsKey(value) {
+  const trimmed = (value ?? "").trim();
+  return trimmed.length > 0 && !trimmed.includes("${");
+}
+
 module.exports = {
   expo: {
     ...appJson.expo,
+    extra: {
+      ...(appJson.expo.extra ?? {}),
+      hasGoogleMapsKey: isUsableMapsKey(process.env.GOOGLE_MAPS_API_KEY),
+    },
     android: {
       ...appJson.expo.android,
       config: {
         googleMaps: {
-          apiKey: process.env.GOOGLE_MAPS_API_KEY ?? "",
+          apiKey: "${GOOGLE_MAPS_API_KEY}",
         },
       },
     },

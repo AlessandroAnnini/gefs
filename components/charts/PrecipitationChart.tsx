@@ -25,7 +25,7 @@ import {
   chartPlotPadding,
 } from "./shared";
 import { useChartSync } from "./ChartSync";
-import { ChartCrosshairs, ChartTooltip, EnsembleBands } from "./overlays";
+import { CalendarGrid, ChartCrosshairs, ChartTooltip, EnsembleBands } from "./overlays";
 
 export function PrecipitationChart({ hourly, variable, utcOffsetSeconds }: ChartProps) {
   const colors = useChartColors();
@@ -57,7 +57,12 @@ export function PrecipitationChart({ hourly, variable, utcOffsetSeconds }: Chart
   );
 
   const nowIdx = useMemo(() => findNowIndex(time), [time]);
-  const xAxisConfig = useXAxisConfig(time, axisFont, colors, utcOffsetSeconds);
+  const { xAxis: xAxisConfig, tickValues, midnightIndices } = useXAxisConfig(
+    time,
+    axisFont,
+    colors,
+    utcOffsetSeconds
+  );
 
   const initY = useMemo(() => pressInitY(false), []);
 
@@ -111,7 +116,7 @@ export function PrecipitationChart({ hourly, variable, utcOffsetSeconds }: Chart
               font: showYAxisUnits ? axisFont : null,
               tickCount: 4,
               labelColor: colors.axis,
-              lineColor: colors.grid,
+              lineColor: colors.gridMinor,
               labelOffset: 2,
               formatYLabel: (val: any) => {
                 const v = val as number;
@@ -132,6 +137,13 @@ export function PrecipitationChart({ hourly, variable, utcOffsetSeconds }: Chart
                 {cumulPath && (
                   <SkiaPath path={cumulPath} color={cumulColor} style="fill" />
                 )}
+                <CalendarGrid
+                  tickValues={tickValues}
+                  midnightIndices={midnightIndices}
+                  xScale={xScale}
+                  chartBounds={chartBounds}
+                  colors={colors}
+                />
                 <EnsembleBands
                   points={points}
                   memberKeys={memberKeys}

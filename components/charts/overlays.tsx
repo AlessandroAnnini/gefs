@@ -1,5 +1,5 @@
-import type { ReactNode } from "react";
-import { View } from "react-native";
+import { memo, type ReactNode } from "react";
+import { StyleSheet, View } from "react-native";
 import { AreaRange, Line } from "victory-native";
 import {
   Circle,
@@ -16,8 +16,49 @@ import type { useChartColors } from "./shared";
 
 type ChartColors = ReturnType<typeof useChartColors>;
 type CurveType = "natural" | "linear";
+type ChartBounds = { top: number; bottom: number; left: number; right: number };
+
+const MIDNIGHT_STROKE = 0.7;
 
 type PointsMap = Record<string, any>;
+
+interface CalendarGridProps {
+  tickValues: number[];
+  midnightIndices: number[];
+  xScale: (idx: number) => number;
+  chartBounds: ChartBounds;
+  colors: ChartColors;
+}
+
+export const CalendarGrid = memo(function CalendarGrid({
+  tickValues,
+  midnightIndices,
+  xScale,
+  chartBounds,
+  colors,
+}: CalendarGridProps) {
+  const { top, bottom, left, right } = chartBounds;
+  const midnight = new Set(midnightIndices);
+
+  return (
+    <>
+      {tickValues.map((idx) => {
+        const x = xScale(idx);
+        if (!Number.isFinite(x) || x < left || x > right) return null;
+        const isMidnight = midnight.has(idx);
+        return (
+          <SkiaLine
+            key={`cal-${idx}`}
+            p1={vec(x, top)}
+            p2={vec(x, bottom)}
+            color={isMidnight ? colors.gridMajor : colors.gridMinor}
+            strokeWidth={isMidnight ? MIDNIGHT_STROKE : StyleSheet.hairlineWidth}
+          />
+        );
+      })}
+    </>
+  );
+});
 
 interface EnsembleBandsProps {
   points: PointsMap;

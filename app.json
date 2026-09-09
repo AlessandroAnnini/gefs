@@ -2,7 +2,7 @@
   "expo": {
     "name": "GEFS",
     "slug": "gefs",
-    "version": "3.7.0",
+    "version": "3.8.0",
     "orientation": "default",
     "icon": "./assets/images/icon.png",
     "scheme": "gefs",
@@ -18,13 +18,8 @@
       },
       "edgeToEdgeEnabled": true,
       "package": "com.alessandroannini.gefs",
-      "versionCode": 37,
-      "permissions": ["android.permission.REQUEST_INSTALL_PACKAGES"],
-      "config": {
-        "googleMaps": {
-          "apiKey": ""
-        }
-      }
+      "versionCode": 38,
+      "permissions": ["android.permission.REQUEST_INSTALL_PACKAGES"]
     },
     "web": {
       "bundler": "metro",

@@ -24,7 +24,7 @@ import {
   chartPlotPadding,
 } from "./shared";
 import { useChartSync } from "./ChartSync";
-import { ChartCrosshairs, ChartTooltip, EnsembleBands } from "./overlays";
+import { CalendarGrid, ChartCrosshairs, ChartTooltip, EnsembleBands } from "./overlays";
 
 export function EnsembleLineChart({ hourly, variable, utcOffsetSeconds }: ChartProps) {
   const colors = useChartColors();
@@ -47,7 +47,12 @@ export function EnsembleLineChart({ hourly, variable, utcOffsetSeconds }: ChartP
   );
 
   const nowIdx = useMemo(() => findNowIndex(time), [time]);
-  const xAxisConfig = useXAxisConfig(time, axisFont, colors, utcOffsetSeconds);
+  const { xAxis: xAxisConfig, tickValues, midnightIndices } = useXAxisConfig(
+    time,
+    axisFont,
+    colors,
+    utcOffsetSeconds
+  );
 
   const tempAlerts = useMemo(() => {
     if (variable !== "temperature_2m") return [];
@@ -96,7 +101,7 @@ export function EnsembleLineChart({ hourly, variable, utcOffsetSeconds }: ChartP
               font: showYAxisUnits ? axisFont : null,
               tickCount: 5,
               labelColor: colors.axis,
-              lineColor: colors.grid,
+              lineColor: colors.gridMinor,
               labelOffset: 2,
               formatYLabel: (val: any) => `${Math.round(val as number)}${unit}`,
             },
@@ -104,6 +109,13 @@ export function EnsembleLineChart({ hourly, variable, utcOffsetSeconds }: ChartP
         >
           {({ points, chartBounds, xScale }) => (
             <>
+              <CalendarGrid
+                tickValues={tickValues}
+                midnightIndices={midnightIndices}
+                xScale={xScale}
+                chartBounds={chartBounds}
+                colors={colors}
+              />
               <EnsembleBands
                 points={points}
                 memberKeys={memberKeys}

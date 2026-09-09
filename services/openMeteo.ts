@@ -387,14 +387,16 @@ export function computeDailyRain(
 
   const dayKeys: string[] = [];
   const dayLabels: string[] = [];
+  const dayIndex = new Map<string, number>();
   const hourToDay: number[] = new Array(time.length);
 
   for (let t = 0; t < time.length; t++) {
     const p = civilParts(time[t], utcOffsetSeconds);
     const key = `${p.year}-${p.month}-${p.date}`;
-    let idx = dayKeys.indexOf(key);
-    if (idx === -1) {
+    let idx = dayIndex.get(key);
+    if (idx == null) {
       idx = dayKeys.length;
+      dayIndex.set(key, idx);
       dayKeys.push(key);
       dayLabels.push(`${dayNames[p.day]} ${p.date}`);
     }
@@ -455,7 +457,9 @@ async function fetchEnsemble(
   let res: Response;
   let raw: string;
   try {
-    res = await fetch(`${ENSEMBLE_BASE}?${params}`);
+    res = await fetch(`${ENSEMBLE_BASE}?${params}`, {
+      signal: AbortSignal.timeout(30_000),
+    });
     raw = await res.text();
   } catch {
     throw new ForecastError("transient");

@@ -121,7 +121,18 @@ export function ChartList() {
     );
   }
 
-  if (!hourly || !data) return null;
+  if (!hourly || !data) {
+    return (
+      <View className="flex-1 items-center justify-center p-8 gap-4">
+        <Text variant="muted" className="text-center">
+          Could not load the forecast. Check your connection and try again.
+        </Text>
+        <Button variant="outline" onPress={() => refetch()}>
+          <Text>Retry</Text>
+        </Button>
+      </View>
+    );
+  }
 
   if ((hourly.time?.length ?? 0) === 0) {
     return <CoverageEmpty model={model} onSettings={openSettings} onMap={openMap} />;

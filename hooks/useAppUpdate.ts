@@ -6,6 +6,7 @@ import {
   fetchLatestUpdate,
   getCachedUpdate,
   isNewerUpdate,
+  updateIdentity,
   type AvailableUpdate,
 } from "@/services/appUpdate";
 import { useSettingsStore, useStoresHydrated } from "@/stores";
@@ -15,8 +16,8 @@ let lastCheckAt = 0;
 
 export function useAppUpdate(autoCheck: boolean) {
   const hydrated = useStoresHydrated();
-  const snoozedUpdateVersionCode = useSettingsStore((s) => s.snoozedUpdateVersionCode);
-  const setSnoozedUpdateVersionCode = useSettingsStore((s) => s.setSnoozedUpdateVersionCode);
+  const snoozedUpdateId = useSettingsStore((s) => s.snoozedUpdateId);
+  const setSnoozedUpdateId = useSettingsStore((s) => s.setSnoozedUpdateId);
 
   const [available, setAvailable] = useState<AvailableUpdate | null>(getCachedUpdate);
   const [checking, setChecking] = useState(false);
@@ -27,7 +28,7 @@ export function useAppUpdate(autoCheck: boolean) {
   const visible =
     available != null &&
     isNewerUpdate(available) &&
-    !(available.versionCode > 0 && available.versionCode === snoozedUpdateVersionCode);
+    updateIdentity(available) !== snoozedUpdateId;
 
   const check = useCallback(
     async (force: boolean) => {
@@ -63,10 +64,8 @@ export function useAppUpdate(autoCheck: boolean) {
   }, [autoCheck, check, hydrated]);
 
   const snooze = useCallback(() => {
-    if (available && available.versionCode > 0) {
-      setSnoozedUpdateVersionCode(available.versionCode);
-    }
-  }, [available, setSnoozedUpdateVersionCode]);
+    if (available) setSnoozedUpdateId(updateIdentity(available));
+  }, [available, setSnoozedUpdateId]);
 
   const install = useCallback(async () => {
     if (!available) return;

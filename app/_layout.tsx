@@ -20,18 +20,24 @@ import { PortalHost } from "@rn-primitives/portal";
 
 import { queryClient } from "@/lib/queryClient";
 import { NAV_THEME } from "@/lib/theme";
-import { useSettingsStore } from "@/stores";
+import { useSettingsStore, useStoresHydrated } from "@/stores";
 
 export { ErrorBoundary } from "expo-router";
 
 SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
-  useEffect(() => {
-    SplashScreen.hideAsync();
-  }, []);
-
   return <RootLayoutNav />;
+}
+
+function HideSplashWhenReady() {
+  const hydrated = useStoresHydrated();
+
+  useEffect(() => {
+    if (hydrated) void SplashScreen.hideAsync();
+  }, [hydrated]);
+
+  return null;
 }
 
 function RootLayoutNav() {
@@ -46,6 +52,7 @@ function RootLayoutNav() {
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
+      <HideSplashWhenReady />
       <QueryClientProvider client={queryClient}>
         <SafeAreaProvider>
           <ThemeProvider value={NAV_THEME[isDark ? "dark" : "light"]}>

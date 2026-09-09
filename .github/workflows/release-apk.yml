@@ -37,6 +37,11 @@ jobs:
       - name: Pin release packaging flags
         run: node scripts/ensure-release-packaging.js
 
+      - name: Embed Google Maps API key
+        env:
+          GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+        run: node scripts/ensure-maps-api-key.js --require
+
       - name: Assemble release APK
         env:
           GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}

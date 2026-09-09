@@ -55,20 +55,13 @@ export function ProbabilityBanner({ control, members, chartBounds }: Probability
 
   const onLayout = (e: LayoutChangeEvent) => setWidth(e.nativeEvent.layout.width);
 
-  if (probability.length === 0 || !chartBounds) return null;
-
-  const fillColor = colors.isDark
-    ? "rgba(167,139,250,0.25)"
-    : "rgba(124,58,237,0.18)";
-
   const plotWidth = plotRight - plotLeft;
-
-  const xScale = (i: number) =>
-    plotLeft + (i / Math.max(probability.length - 1, 1)) * plotWidth;
-
-  let fillPath = "";
-  let strokePath = "";
-  if (width > 0 && probability.length > 0) {
+  const { fillPath, strokePath } = useMemo(() => {
+    if (width <= 0 || probability.length === 0 || !chartBounds) {
+      return { fillPath: "", strokePath: "" };
+    }
+    const xScale = (i: number) =>
+      plotLeft + (i / Math.max(probability.length - 1, 1)) * plotWidth;
     const fp: string[] = [`M ${xScale(0)} ${PLOT_BOTTOM}`];
     const sp: string[] = [];
     for (let i = 0; i < probability.length; i++) {
@@ -78,9 +71,14 @@ export function ProbabilityBanner({ control, members, chartBounds }: Probability
       sp.push(i === 0 ? `M ${x} ${y}` : `L ${x} ${y}`);
     }
     fp.push(`L ${xScale(probability.length - 1)} ${PLOT_BOTTOM} Z`);
-    fillPath = fp.join(" ");
-    strokePath = sp.join(" ");
-  }
+    return { fillPath: fp.join(" "), strokePath: sp.join(" ") };
+  }, [width, probability, plotLeft, plotWidth, chartBounds]);
+
+  if (probability.length === 0 || !chartBounds) return null;
+
+  const fillColor = colors.isDark
+    ? "rgba(167,139,250,0.25)"
+    : "rgba(124,58,237,0.18)";
 
   const ticks = [1, 0.5, 0];
   const tickLabel = (t: number) => `${Math.round(t * 100)}%`;
@@ -100,7 +98,7 @@ export function ProbabilityBanner({ control, members, chartBounds }: Probability
               key={`grid-${t}`}
               p1={vec(plotLeft, yForProb(t))}
               p2={vec(plotRight, yForProb(t))}
-              color={colors.grid}
+              color={colors.gridMinor}
               strokeWidth={0.5}
             />
           ))}

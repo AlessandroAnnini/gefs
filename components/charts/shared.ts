@@ -125,6 +125,8 @@ export function useChartColors() {
       innerSpread: isDark ? "rgba(56,189,248,0.25)" : "rgba(8,145,178,0.20)",
       axis: isDark ? "#94a3b8" : "#64748b",
       grid: isDark ? "#334155" : "#e2e8f0",
+      gridMinor: isDark ? "rgba(148,163,184,0.14)" : "rgba(15,23,42,0.06)",
+      gridMajor: isDark ? "rgba(148,163,184,0.26)" : "rgba(15,23,42,0.10)",
       crosshair: isDark ? "rgba(255,255,255,0.4)" : "rgba(0,0,0,0.3)",
       nowLine: isDark ? "rgba(250,204,21,0.35)" : "rgba(202,138,4,0.35)",
       gust: isDark ? "rgba(251,146,60,0.7)" : "rgba(234,88,12,0.6)",
@@ -148,29 +150,64 @@ export function useSeriesData(
   );
 }
 
+const LONG_HORIZON_SECONDS = 7.5 * 24 * 3600;
+
+export function xAxisTickStep(time: number[]): 6 | 24 {
+  if (time.length < 2) return 6;
+  return time[time.length - 1] - time[0] <= LONG_HORIZON_SECONDS ? 6 : 24;
+}
+
+export function timeTickIndices(
+  time: number[],
+  utcOffsetSeconds: number,
+  stepHours: number
+): number[] {
+  const indices: number[] = [];
+  for (let i = 0; i < time.length; i++) {
+    if (civilParts(time[i], utcOffsetSeconds).hours % stepHours === 0) {
+      indices.push(i);
+    }
+  }
+  return indices;
+}
+
+export function midnightTickIndices(
+  time: number[],
+  utcOffsetSeconds: number,
+  tickValues: number[]
+): number[] {
+  return tickValues.filter((i) => civilParts(time[i], utcOffsetSeconds).hours === 0);
+}
+
 export function useXAxisConfig(
   time: number[],
   axisFont: SkFont | null,
   colors: ReturnType<typeof useChartColors>,
   utcOffsetSeconds: number
 ) {
-  return useMemo(
-    () => ({
-      font: axisFont,
-      tickCount: 5,
-      labelColor: colors.axis,
-      lineColor: colors.grid,
-      labelOffset: 4,
-      formatXLabel: (val: any) => {
-        const i = Math.round(val as number);
-        if (i < 0 || i >= time.length) return "";
-        const hours = civilParts(time[i], utcOffsetSeconds).hours;
-        if (hours !== 0 && hours !== 12) return "";
-        return formatDayLabel(time[i], utcOffsetSeconds);
+  return useMemo(() => {
+    const step = xAxisTickStep(time);
+    const tickValues = timeTickIndices(time, utcOffsetSeconds, step);
+    const midnightIndices = midnightTickIndices(time, utcOffsetSeconds, tickValues);
+
+    return {
+      xAxis: {
+        font: axisFont,
+        tickValues: midnightIndices,
+        labelColor: colors.axis,
+        lineWidth: 0,
+        labelOffset: 4,
+        formatXLabel: (val: any) => {
+          const i = Math.round(val as number);
+          if (i < 0 || i >= time.length) return "";
+          if (civilParts(time[i], utcOffsetSeconds).hours !== 0) return "";
+          return formatDayLabel(time[i], utcOffsetSeconds);
+        },
       },
-    }),
-    [time, axisFont, colors.axis, colors.grid, utcOffsetSeconds]
-  );
+      tickValues,
+      midnightIndices,
+    };
+  }, [time, axisFont, colors.axis, utcOffsetSeconds]);
 }
 
 export function useTooltipPress(initY: Record<string, number>) {
