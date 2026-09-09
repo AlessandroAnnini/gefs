@@ -1,8 +1,11 @@
 import { Platform, Pressable, ScrollView, View } from "react-native";
 import { Text } from "@/components/ui/text";
+import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import { useAppUpdate } from "@/hooks";
 import { useSettingsStore } from "@/stores";
+import { localVersionName } from "@/services/appUpdate";
 import {
   ENSEMBLE_MODELS,
   FORECAST_DAY_OPTIONS,
@@ -99,6 +102,16 @@ export default function SettingsScreen() {
       setShowYAxisUnits: s.setShowYAxisUnits,
     }))
   );
+
+  const {
+    latest,
+    checking,
+    installing,
+    progress,
+    error: updateError,
+    check,
+    install,
+  } = useAppUpdate(false);
 
   const toggleVariable = (v: WeatherVariable) => {
     if (variables.includes(v)) {
@@ -202,6 +215,47 @@ export default function SettingsScreen() {
             iconColor={iconColor}
           />
         </Card>
+
+        {Platform.OS === "android" ? (
+          <Card className="p-4 gap-3">
+            <Text variant="h4">App update</Text>
+            {latest ? (
+              <Text>
+                Update available · {latest.versionName}
+              </Text>
+            ) : (
+              <Text variant="muted">
+                {checking
+                  ? "Checking for updates…"
+                  : `You're on ${localVersionName()}`}
+              </Text>
+            )}
+            {installing ? (
+              <Text variant="muted">
+                Downloading… {Math.round(progress * 100)}%
+              </Text>
+            ) : null}
+            {updateError ? (
+              <Text variant="muted">{updateError}</Text>
+            ) : null}
+            <View className="flex-row flex-wrap gap-2">
+              <Button
+                variant="outline"
+                onPress={() => void check(true)}
+                disabled={checking || installing}
+              >
+                <Text>Check for update</Text>
+              </Button>
+              {latest ? (
+                <Button onPress={() => void install()} disabled={installing}>
+                  <Text className="text-primary-foreground">
+                    Download and install
+                  </Text>
+                </Button>
+              ) : null}
+            </View>
+          </Card>
+        ) : null}
 
         <View className="mt-4 mb-8 items-center gap-1">
           {appInfoLines().map((line) => (

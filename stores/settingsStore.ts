@@ -15,11 +15,13 @@ interface SettingsState {
   variables: WeatherVariable[];
   colorScheme: "system" | "light" | "dark";
   showYAxisUnits: boolean;
+  snoozedUpdateVersionCode: number | null;
   setModel: (model: EnsembleModel) => void;
   setForecastDays: (days: number) => void;
   setVariables: (variables: WeatherVariable[]) => void;
   setColorScheme: (scheme: "system" | "light" | "dark") => void;
   setShowYAxisUnits: (v: boolean) => void;
+  setSnoozedUpdateVersionCode: (code: number | null) => void;
 }
 
 export const useSettingsStore = create<SettingsState>()(
@@ -30,6 +32,7 @@ export const useSettingsStore = create<SettingsState>()(
       variables: ["temperature_2m", "precipitation", "pressure_msl", "wind_speed_10m"],
       colorScheme: "system",
       showYAxisUnits: true,
+      snoozedUpdateVersionCode: null,
       setModel: (model) =>
         set((s) => ({
           model,
@@ -40,10 +43,12 @@ export const useSettingsStore = create<SettingsState>()(
       setVariables: (variables) => set({ variables }),
       setColorScheme: (colorScheme) => set({ colorScheme }),
       setShowYAxisUnits: (showYAxisUnits) => set({ showYAxisUnits }),
+      setSnoozedUpdateVersionCode: (snoozedUpdateVersionCode) =>
+        set({ snoozedUpdateVersionCode }),
     }),
     {
       name: "gefs-settings",
-      version: 3,
+      version: 4,
       storage: createJSONStorage(() => AsyncStorage),
       migrate: (persisted) => {
         const s = { ...(persisted as Record<string, unknown>) };
@@ -51,6 +56,9 @@ export const useSettingsStore = create<SettingsState>()(
         const model = isEnsembleModel(s.model) ? s.model : "ecmwf_ifs025";
         s.model = model;
         s.forecastDays = clampForecastDays((s.forecastDays as number) ?? 7, model);
+        if (typeof s.snoozedUpdateVersionCode !== "number") {
+          s.snoozedUpdateVersionCode = null;
+        }
         return s as unknown as SettingsState;
       },
     }

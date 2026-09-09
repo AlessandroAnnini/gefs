@@ -57,7 +57,7 @@ npx expo start
 
 Maps need `GOOGLE_MAPS_API_KEY`. Forecasts do not. For a store-signed APK, copy `keystore.properties.example` to `keystore.properties` and point it at a real keystore.
 
-The sideload APK is **arm64-v8a only** (typical phones). For an x86_64 emulator, override the ABI when running a debug build: `./android/gradlew -p android assembleDebug -PreactNativeArchitectures=x86_64`.
+The sideload APK is **arm64-v8a only** (typical phones). Download the latest from [GitHub Releases](https://github.com/AlessandroAnnini/gefs/releases/latest). Pushing a `v*` tag builds that APK in GitHub Actions; add a `GOOGLE_MAPS_API_KEY` repository secret so maps work in the CI build. From 3.7.0, Android can check that Release and open the system installer. For an x86_64 emulator, override the ABI when running a debug build: `./android/gradlew -p android assembleDebug -PreactNativeArchitectures=x86_64`.
 
 ## Data and terms
 

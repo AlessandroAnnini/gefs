@@ -1,0 +1,64 @@
+name: Release APK
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Prebuild Android
+        env:
+          GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+        run: npx expo prebuild --platform android --non-interactive
+
+      - name: Pin release packaging flags
+        run: node scripts/ensure-release-packaging.js
+
+      - name: Assemble release APK
+        env:
+          GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+        run: npm run android:apk
+
+      - name: Name artifacts
+        run: |
+          VERSION="$(node -p "require('./package.json').version")"
+          CODE="$(node -e "
+            const fs = require('fs');
+            const text = fs.readFileSync('android/app/build.gradle', 'utf8');
+            const match = text.match(/versionCode\\s+(\\d+)/);
+            if (!match) throw new Error('versionCode not found');
+            process.stdout.write(match[1]);
+          ")"
+          printf '{"versionName":"%s","versionCode":%s}\n' "$VERSION" "$CODE" > update.json
+          cp android/app/build/outputs/apk/release/app-release.apk "gefs-${GITHUB_REF_NAME}.apk"
+          ls -lh "gefs-${GITHUB_REF_NAME}.apk" update.json
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            gefs-${{ github.ref_name }}.apk
+            update.json
+          generate_release_notes: true

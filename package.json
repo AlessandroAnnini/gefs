@@ -1,7 +1,7 @@
 {
   "name": "gefs",
   "main": "expo-router/entry",
-  "version": "3.6.0",
+  "version": "3.7.0",
   "scripts": {
     "start": "expo start",
     "android": "expo run:android",
@@ -22,8 +22,11 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "expo": "~55.0.28",
+    "expo-build-properties": "~55.0.18",
     "expo-constants": "~55.0.17",
+    "expo-file-system": "~55.0.26",
     "expo-font": "~55.0.8",
+    "expo-intent-launcher": "~55.0.16",
     "expo-linking": "~55.0.16",
     "expo-location": "~55.1.12",
     "expo-router": "~55.0.17",
