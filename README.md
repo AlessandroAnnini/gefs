@@ -51,11 +51,13 @@ npx expo start
 | --- | --- |
 | `npm start` | Expo dev server |
 | `npm run android` | Debug build / run on Android |
-| `npm run android:apk` | Release APK (`NODE_ENV=production`) |
+| `npm run android:apk` | Release APK (`NODE_ENV=production`, arm64-v8a only) |
 | `npm run ios` | Debug build / run on iOS |
 | `npm run web` | Web (charts are built for native) |
 
 Maps need `GOOGLE_MAPS_API_KEY`. Forecasts do not. For a store-signed APK, copy `keystore.properties.example` to `keystore.properties` and point it at a real keystore.
+
+The sideload APK is **arm64-v8a only** (typical phones). For an x86_64 emulator, override the ABI when running a debug build: `./android/gradlew -p android assembleDebug -PreactNativeArchitectures=x86_64`.
 
 ## Data and terms
 

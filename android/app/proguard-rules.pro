@@ -11,4 +11,11 @@
 -keep class com.swmansion.reanimated.** { *; }
 -keep class com.facebook.react.turbomodule.** { *; }
 
+# @shopify/react-native-skia (Victory Native charts)
+-keep class com.shopify.reactnative.skia.** { *; }
+
+# Google Maps
+-keep class com.google.android.gms.maps.** { *; }
+-keep interface com.google.android.gms.maps.** { *; }
+
 # Add any project specific keep options here:

@@ -113,8 +113,8 @@ android {
         applicationId 'com.alessandroannini.gefs'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 34
-        versionName "3.4.0"
+        versionCode 35
+        versionName "3.5.0"
         manifestPlaceholders = [GOOGLE_MAPS_API_KEY: mapsApiKey]
 
         buildConfigField "String", "REACT_NATIVE_RELEASE_LEVEL", "\"${findProperty('reactNativeReleaseLevel') ?: 'stable'}\""
