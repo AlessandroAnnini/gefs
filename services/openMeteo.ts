@@ -94,7 +94,14 @@ export function isCoverageError(error: unknown): boolean {
   return isForecastError(error) && error.kind === "coverage";
 }
 
+const FETCH_TIMEOUT_MS = 30_000;
 const COVERAGE_REASON = /no data|not available|for this location/i;
+
+function fetchWithTimeout(url: string, ms: number): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ms);
+  return fetch(url, { signal: controller.signal }).finally(() => clearTimeout(timer));
+}
 
 function isFiniteCoord(value: unknown): boolean {
   return typeof value === "number" && Number.isFinite(value);
@@ -457,9 +464,7 @@ async function fetchEnsemble(
   let res: Response;
   let raw: string;
   try {
-    res = await fetch(`${ENSEMBLE_BASE}?${params}`, {
-      signal: AbortSignal.timeout(30_000),
-    });
+    res = await fetchWithTimeout(`${ENSEMBLE_BASE}?${params}`, FETCH_TIMEOUT_MS);
     raw = await res.text();
   } catch {
     throw new ForecastError("transient");
