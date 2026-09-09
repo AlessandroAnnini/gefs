@@ -72,6 +72,54 @@ export interface EnsembleResponse {
   hourly: Record<string, (number | null)[]>;
 }
 
+export type ForecastErrorKind = "coverage" | "transient";
+
+export class ForecastError extends Error {
+  readonly kind: ForecastErrorKind;
+
+  constructor(kind: ForecastErrorKind) {
+    super(kind);
+    this.name = "ForecastError";
+    this.kind = kind;
+  }
+}
+
+export function isForecastError(error: unknown): error is ForecastError {
+  if (typeof error !== "object" || error == null) return false;
+  const kind = (error as { kind?: unknown }).kind;
+  return kind === "coverage" || kind === "transient";
+}
+
+export function isCoverageError(error: unknown): boolean {
+  return isForecastError(error) && error.kind === "coverage";
+}
+
+const COVERAGE_REASON = /no data|not available|for this location/i;
+
+function isFiniteCoord(value: unknown): boolean {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+function isCoverageReason(reason: unknown): boolean {
+  return typeof reason === "string" && COVERAGE_REASON.test(reason);
+}
+
+function isCoverageBody(
+  res: Response,
+  body: EnsembleResponse & { error?: boolean; reason?: string }
+): boolean {
+  if (isCoverageReason(body.reason)) return true;
+  if (
+    res.ok &&
+    (body.hourly == null ||
+      !isFiniteCoord(body.latitude) ||
+      !isFiniteCoord(body.longitude))
+  ) {
+    return true;
+  }
+  return false;
+}
+
 export interface EnsembleSeries {
   time: number[];
   control: (number | null)[];
@@ -404,15 +452,27 @@ async function fetchEnsemble(
     timezone: "auto",
     timeformat: "unixtime",
   });
-  const res = await fetch(`${ENSEMBLE_BASE}?${params}`);
+  let res: Response;
+  let raw: string;
+  try {
+    res = await fetch(`${ENSEMBLE_BASE}?${params}`);
+    raw = await res.text();
+  } catch {
+    throw new ForecastError("transient");
+  }
+
   let body: EnsembleResponse & { error?: boolean; reason?: string };
   try {
-    body = await res.json();
+    body = JSON.parse(raw) as EnsembleResponse & { error?: boolean; reason?: string };
   } catch {
-    throw new Error(`Open-Meteo API error: ${res.status}`);
+    throw new ForecastError(/\bnan\b/i.test(raw) ? "coverage" : "transient");
+  }
+
+  if (isCoverageBody(res, body)) {
+    throw new ForecastError("coverage");
   }
   if (!res.ok || body.error) {
-    throw new Error(body.reason ?? `Open-Meteo API error: ${res.status}`);
+    throw new ForecastError("transient");
   }
   return body;
 }
@@ -435,9 +495,11 @@ export function useEnsembleData(
       clampedDays,
       variablesKey,
     ],
-    queryFn: () => fetchEnsemble(lat!, lon!, variables, model, days),
+    queryFn: () => fetchEnsemble(lat!, lon!, variables, model, clampedDays),
     enabled: lat != null && lon != null,
+    retry: (failureCount, error) => !isCoverageError(error) && failureCount < 2,
     staleTime: 30 * 60 * 1000,
-    refetchInterval: 60 * 60 * 1000,
+    refetchInterval: (query) =>
+      isCoverageError(query.state.error) ? false : 60 * 60 * 1000,
   });
 }

@@ -7,8 +7,11 @@ import { EnsembleChart } from "./EnsembleChart";
 import { ChartSyncProvider } from "./charts/ChartSync";
 import { ChartFontsProvider } from "./charts/ChartFonts";
 import {
+  ENSEMBLE_MODELS,
+  isCoverageError,
   trimHourlyToSharedTail,
   useEnsembleData,
+  type EnsembleModel,
   type WeatherVariable,
 } from "@/services/openMeteo";
 import { useLocationStore, useSettingsStore, useStoresHydrated } from "@/stores";
@@ -99,11 +102,17 @@ export function ChartList() {
     );
   }
 
+  const openSettings = () => router.push("/settings");
+  const openMap = () => router.push("/map");
+
   if (isError) {
+    if (isCoverageError(error)) {
+      return <CoverageEmpty model={model} onSettings={openSettings} onMap={openMap} />;
+    }
     return (
       <View className="flex-1 items-center justify-center p-8 gap-4">
         <Text variant="muted" className="text-center">
-          {error?.message ?? "Failed to load forecast data"}
+          Could not load the forecast. Check your connection and try again.
         </Text>
         <Button variant="outline" onPress={() => refetch()}>
           <Text>Retry</Text>
@@ -115,13 +124,7 @@ export function ChartList() {
   if (!hourly || !data) return null;
 
   if ((hourly.time?.length ?? 0) === 0) {
-    return (
-      <View className="flex-1 items-center justify-center p-8">
-        <Text variant="muted" className="text-center">
-          No forecast hours for this model at this location.
-        </Text>
-      </View>
-    );
+    return <CoverageEmpty model={model} onSettings={openSettings} onMap={openMap} />;
   }
 
   const syncKey = `${latitude},${longitude},${model},${forecastDays},${variables.join(",")}`;
@@ -150,5 +153,32 @@ export function ChartList() {
         </ScrollView>
       </ChartSyncProvider>
     </ChartFontsProvider>
+  );
+}
+
+function CoverageEmpty({
+  model,
+  onSettings,
+  onMap,
+}: {
+  model: EnsembleModel;
+  onSettings: () => void;
+  onMap: () => void;
+}) {
+  return (
+    <View className="flex-1 items-center justify-center p-8 gap-4">
+      <Text variant="muted" className="text-center">
+        {ENSEMBLE_MODELS[model]} does not cover this location. Pick a different
+        model, or move the pin.
+      </Text>
+      <View className="flex-row gap-2">
+        <Button variant="outline" onPress={onMap}>
+          <Text>Open map</Text>
+        </Button>
+        <Button onPress={onSettings}>
+          <Text className="text-primary-foreground">Change model</Text>
+        </Button>
+      </View>
+    </View>
   );
 }
