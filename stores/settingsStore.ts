@@ -4,6 +4,7 @@ import { createJSONStorage, persist } from "zustand/middleware";
 
 import {
   clampForecastDays,
+  isEnsembleModel,
   type EnsembleModel,
   type WeatherVariable,
 } from "@/services/openMeteo";
@@ -42,12 +43,13 @@ export const useSettingsStore = create<SettingsState>()(
     }),
     {
       name: "gefs-settings",
-      version: 2,
+      version: 3,
       storage: createJSONStorage(() => AsyncStorage),
       migrate: (persisted) => {
         const s = { ...(persisted as Record<string, unknown>) };
         delete s.isLocationFromMap;
-        const model = (s.model as EnsembleModel) ?? "ecmwf_ifs025";
+        const model = isEnsembleModel(s.model) ? s.model : "ecmwf_ifs025";
+        s.model = model;
         s.forecastDays = clampForecastDays((s.forecastDays as number) ?? 7, model);
         return s as unknown as SettingsState;
       },

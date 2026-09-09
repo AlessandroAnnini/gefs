@@ -114,6 +114,16 @@ export function ChartList() {
 
   if (!hourly || !data) return null;
 
+  if ((hourly.time?.length ?? 0) === 0) {
+    return (
+      <View className="flex-1 items-center justify-center p-8">
+        <Text variant="muted" className="text-center">
+          No forecast hours for this model at this location.
+        </Text>
+      </View>
+    );
+  }
+
   const syncKey = `${latitude},${longitude},${model},${forecastDays},${variables.join(",")}`;
 
   return (

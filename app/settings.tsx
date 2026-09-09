@@ -135,7 +135,7 @@ export default function SettingsScreen() {
             Forecast Days
           </Text>
           <View className="flex-row flex-wrap gap-2">
-            {FORECAST_DAY_OPTIONS.filter((d) => d <= MODEL_MAX_DAYS[model]).map((d) => (
+            {FORECAST_DAY_OPTIONS.filter((d) => d <= (MODEL_MAX_DAYS[model] ?? 0)).map((d) => (
               <Pressable
                 key={d}
                 onPress={() => setForecastDays(d)}
@@ -196,7 +196,7 @@ export default function SettingsScreen() {
             Charts
           </Text>
           <OptionRow
-            label="Show units on Y-axis"
+            label="Show Y-axis labels"
             selected={showYAxisUnits}
             onPress={() => setShowYAxisUnits(!showYAxisUnits)}
             iconColor={iconColor}

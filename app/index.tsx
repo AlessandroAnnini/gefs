@@ -45,7 +45,7 @@ export default function ForecastScreen() {
       <View className="flex-row items-center justify-between px-4 py-2 border-b border-border">
         <View className="flex-1 mr-2">
           <Text variant="muted" className="text-xs">
-            {ENSEMBLE_MODELS[model]} {"\u00B7"} {coordsLabel}
+            {ENSEMBLE_MODELS[model] ?? model} {"\u00B7"} {coordsLabel}
           </Text>
         </View>
         <View className="flex-row gap-1">

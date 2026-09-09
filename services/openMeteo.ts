@@ -32,23 +32,32 @@ export const ENSEMBLE_MODELS = {
   ecmwf_ifs025: "ECMWF IFS 0.25°",
   gfs025: "GFS 0.25°",
   icon_seamless: "ICON Seamless",
+  meteoswiss_icon_ch1_ensemble: "ICON CH1 1km",
 } as const;
 
 export type EnsembleModel = keyof typeof ENSEMBLE_MODELS;
 
-export const FORECAST_DAY_OPTIONS = [3, 5, 7, 10, 14] as const;
+export function isEnsembleModel(value: unknown): value is EnsembleModel {
+  return typeof value === "string" && value in ENSEMBLE_MODELS;
+}
+
+export const FORECAST_DAY_OPTIONS = [1, 2, 3, 5, 7, 10, 14] as const;
 
 /** Longest horizon that currently returns a full control run (no trailing nulls). */
 export const MODEL_MAX_DAYS: Record<EnsembleModel, number> = {
   ecmwf_ifs025: 14,
   gfs025: 10,
   icon_seamless: 7,
+  /** Native CH1 ensemble is ~33 hours. */
+  meteoswiss_icon_ch1_ensemble: 2,
 };
 
 export function clampForecastDays(days: number, model: EnsembleModel): number {
   const max = MODEL_MAX_DAYS[model];
   const allowed = FORECAST_DAY_OPTIONS.filter((d) => d <= max);
-  const capped = Math.min(days, max);
+  if (allowed.length === 0) return FORECAST_DAY_OPTIONS[0];
+  const safeDays = Number.isFinite(days) ? days : max;
+  const capped = Math.min(safeDays, max);
   return allowed.reduce((best, d) => (d <= capped ? d : best), allowed[0]);
 }
 
@@ -89,7 +98,8 @@ export function civilParts(unixSeconds: number, utcOffsetSeconds: number): Civil
   };
 }
 
-const MEMBER_COUNT = 50;
+/** High enough for WeatherNext (64) and ECMWF (50); missing keys are skipped. */
+const MEMBER_COUNT = 64;
 
 function parseUnixTimes(raw: (number | null)[] | undefined): number[] {
   if (!raw) return [];
@@ -119,7 +129,8 @@ function collectMembers(
   const members: (number | null)[][] = [];
   for (let i = 1; i <= MEMBER_COUNT; i++) {
     const key = `${variable}_member${String(i).padStart(2, "0")}`;
-    if (hourly[key]) members.push(hourly[key]);
+    const series = hourly[key];
+    if (Array.isArray(series) && series.length > 0) members.push(series);
   }
   return members;
 }
@@ -130,7 +141,13 @@ export function lastDataIndex(
 ): number {
   const control = hourly[variable] ?? [];
   const members = collectMembers(hourly, variable);
-  const len = Math.min((hourly.time ?? []).length, control.length);
+  const timeLen = (hourly.time ?? []).length;
+  const seriesLen = Math.max(
+    control.length,
+    ...members.map((m) => m.length),
+    0
+  );
+  const len = Math.min(timeLen > 0 ? timeLen : seriesLen, seriesLen);
   let last = -1;
   for (let t = 0; t < len; t++) {
     if (hasValueAt(control, members, t)) last = t;
@@ -166,35 +183,6 @@ export function parseEnsembleSeries(
   const control = hourly[variable] ?? [];
   const members = collectMembers(hourly, variable);
   return { time, control, members };
-}
-
-export function computePercentiles(
-  members: (number | null)[][],
-  control: (number | null)[],
-  pLow = 0.1,
-  pHigh = 0.9
-): { low: (number | null)[]; high: (number | null)[] } {
-  const len = control.length;
-  const low: (number | null)[] = new Array(len);
-  const high: (number | null)[] = new Array(len);
-
-  for (let t = 0; t < len; t++) {
-    const vals: number[] = [];
-    if (control[t] != null) vals.push(control[t]!);
-    for (const m of members) {
-      if (m[t] != null) vals.push(m[t]!);
-    }
-    if (vals.length === 0) {
-      low[t] = null;
-      high[t] = null;
-      continue;
-    }
-    vals.sort((a, b) => a - b);
-    low[t] = vals[Math.floor(pLow * (vals.length - 1))];
-    high[t] = vals[Math.ceil(pHigh * (vals.length - 1))];
-  }
-
-  return { low, high };
 }
 
 /** One sort per timestep for the standard ensemble bands. */
@@ -406,20 +394,27 @@ async function fetchEnsemble(
       if (!allVars.includes(extra)) allVars.push(extra);
     }
   }
+  const forecastDays = clampForecastDays(days, model);
   const params = new URLSearchParams({
     latitude: lat.toFixed(4),
     longitude: lon.toFixed(4),
     hourly: allVars.join(","),
     models: model,
-    forecast_days: clampForecastDays(days, model).toString(),
+    forecast_days: forecastDays.toString(),
     timezone: "auto",
     timeformat: "unixtime",
   });
   const res = await fetch(`${ENSEMBLE_BASE}?${params}`);
-  if (!res.ok) {
+  let body: EnsembleResponse & { error?: boolean; reason?: string };
+  try {
+    body = await res.json();
+  } catch {
     throw new Error(`Open-Meteo API error: ${res.status}`);
   }
-  return res.json();
+  if (!res.ok || body.error) {
+    throw new Error(body.reason ?? `Open-Meteo API error: ${res.status}`);
+  }
+  return body;
 }
 
 export function useEnsembleData(
@@ -430,13 +425,14 @@ export function useEnsembleData(
   days: number = 7
 ) {
   const variablesKey = variables.slice().sort().join(",");
+  const clampedDays = clampForecastDays(days, model);
   return useQuery({
     queryKey: [
       "ensemble",
       lat?.toFixed(4) ?? "none",
       lon?.toFixed(4) ?? "none",
       model,
-      days,
+      clampedDays,
       variablesKey,
     ],
     queryFn: () => fetchEnsemble(lat!, lon!, variables, model, days),

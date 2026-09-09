@@ -83,10 +83,7 @@ export function ProbabilityBanner({ control, members, chartBounds }: Probability
   }
 
   const ticks = [1, 0.5, 0];
-  const tickLabel = (t: number) => {
-    const nPct = Math.round(t * 100);
-    return showYAxisUnits ? `${nPct}%` : String(nPct);
-  };
+  const tickLabel = (t: number) => `${Math.round(t * 100)}%`;
 
   return (
     <View onLayout={onLayout}>
@@ -114,7 +111,8 @@ export function ProbabilityBanner({ control, members, chartBounds }: Probability
             style="stroke"
             strokeWidth={1}
           />
-          {axisFont &&
+          {showYAxisUnits &&
+            axisFont &&
             ticks.map((t) => (
               <SkiaText
                 key={`lbl-${t}`}

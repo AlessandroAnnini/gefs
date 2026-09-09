@@ -171,8 +171,8 @@ export function PrecipitationChart({ hourly, variable, utcOffsetSeconds }: Chart
       </View>
 
       {dailyRain.length > 0 && (
-        <View className="flex-row justify-around px-2 pb-1">
-          {dailyRain.map((d) => {
+        <View className="flex-row flex-wrap justify-center gap-x-3 gap-y-2 px-2 pb-1">
+          {dailyRain.map((d, i) => {
             const hasRain = d.median >= 0.1;
             const hasSpread = d.p90 - d.p10 >= 0.2;
             const medianColor =
@@ -182,7 +182,7 @@ export function PrecipitationChart({ hourly, variable, utcOffsetSeconds }: Chart
                   ? colors.isDark ? "#94a3b8" : "#64748b"
                   : colors.isDark ? "#475569" : "#cbd5e1";
             return (
-              <View key={d.label} className="items-center">
+              <View key={`${d.label}-${i}`} className="items-center" style={{ minWidth: 48 }}>
                 <Text className="text-muted-foreground" style={{ fontSize: 9 }}>
                   {d.label}
                 </Text>
