@@ -67,4 +67,6 @@ Attribute the data as **Open-Meteo**. Upstream models belong to ECMWF, NOAA, DWD
 
 ## Licence
 
-Personal project. Source is the repository; weather data remains under the providers’ terms.
+GEFS is licensed under the [GNU Affero General Public License v3.0](LICENSE) (AGPL-3.0). Copyright (C) 2026 Alessandro Annini.
+
+Weather data remains under the providers’ terms.

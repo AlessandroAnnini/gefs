@@ -1,4 +1,5 @@
 import { Platform, Pressable, ScrollView, View } from "react-native";
+import * as Linking from "expo-linking";
 import { Text } from "@/components/ui/text";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -22,17 +23,15 @@ import Constants from "expo-constants";
 
 const COLOR_SCHEME_OPTIONS = ["system", "light", "dark"] as const;
 
-function appInfoLines(): string[] {
+const AUTHOR_URL = "https://alessandroannini.com/";
+
+function appInfo(): { name: string; version: string; platform: string } {
   const name = Constants.expoConfig?.name ?? "GEFS";
   const version =
     Constants.nativeApplicationVersion ??
     Constants.expoConfig?.version ??
     "—";
   const build = Constants.nativeBuildVersion;
-  const packageId =
-    Platform.OS === "ios"
-      ? Constants.expoConfig?.ios?.bundleIdentifier
-      : Constants.expoConfig?.android?.package;
   const platform =
     Platform.OS === "ios"
       ? `iOS ${String(Platform.Version)}`
@@ -40,13 +39,11 @@ function appInfoLines(): string[] {
         ? `Android API ${String(Platform.Version)}`
         : Platform.OS;
 
-  return [
+  return {
     name,
-    build ? `Version ${version} (${build})` : `Version ${version}`,
-    packageId,
+    version: build ? `Version ${version} (${build})` : `Version ${version}`,
     platform,
-    "Data: Open-Meteo",
-  ].filter((line): line is string => Boolean(line));
+  };
 }
 
 function OptionRow({
@@ -112,6 +109,7 @@ export default function SettingsScreen() {
     check,
     install,
   } = useAppUpdate(false);
+  const info = appInfo();
 
   const toggleVariable = (v: WeatherVariable) => {
     if (variables.includes(v)) {
@@ -258,11 +256,28 @@ export default function SettingsScreen() {
         ) : null}
 
         <View className="mt-4 mb-8 items-center gap-1">
-          {appInfoLines().map((line) => (
-            <Text key={line} variant="muted" className="text-center">
-              {line}
-            </Text>
-          ))}
+          <Text variant="muted" className="text-center">
+            {info.name}
+          </Text>
+          <Text variant="muted" className="text-center">
+            {info.version}
+          </Text>
+          <Text
+            variant="muted"
+            className="text-center underline"
+            onPress={() => void Linking.openURL(AUTHOR_URL)}
+          >
+            alessandroannini.com
+          </Text>
+          <Text variant="muted" className="text-center">
+            {info.platform}
+          </Text>
+          <Text variant="muted" className="text-center">
+            Data: Open-Meteo
+          </Text>
+          <Text variant="muted" className="text-center">
+            AGPL-3.0
+          </Text>
         </View>
       </View>
     </ScrollView>

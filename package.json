@@ -2,6 +2,7 @@
   "name": "gefs",
   "main": "expo-router/entry",
   "version": "3.7.0",
+  "license": "AGPL-3.0-only",
   "scripts": {
     "start": "expo start",
     "android": "expo run:android",
