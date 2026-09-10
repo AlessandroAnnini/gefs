@@ -17,9 +17,10 @@ Forecasts come from [Open-Meteo](https://open-meteo.com/) ensemble models. Locat
 Each chart is an hourly ensemble for the selected variables:
 
 - **Temperature 2 m**, with frost / heat markers when members cross 0 °C or 35 °C
-- **Precipitation**, with a cumulative fill, daily median (P10–P90), and a 12-hour rain-probability strip
+- **Precipitation**, with a cumulative fill and a 12-hour rain-probability strip. Y-axis ticks are numbers only; the unit stays in the title.
 - **Mean sea-level pressure**
 - **Wind 10 m**, plus gusts when the model provides them
+- **Weather events** on the temperature chart (6-hour blocks): snow, freezing rain, thunder, hail, and severe gusts when at least a quarter of the ensemble agrees in any hour of the block. Ordinary rain stays on the precipitation chart. Icons hide when nothing qualifies. Hail codes are only available in Central Europe.
 
 Swipe one chart and a crosshair follows on the others. Pull to refresh. Settings control model, horizon, variables, light/dark, and whether Y-axis labels are shown.
 

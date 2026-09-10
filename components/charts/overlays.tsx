@@ -1,64 +1,208 @@
 import { memo, type ReactNode } from "react";
-import { StyleSheet, View } from "react-native";
+import { View } from "react-native";
 import { AreaRange, Line } from "victory-native";
 import {
   Circle,
+  Group,
   Line as SkiaLine,
+  Path as SkiaPath,
+  Text as SkiaText,
   DashPathEffect,
   vec,
+  type SkFont,
 } from "@shopify/react-native-skia";
 import {
   useDerivedValue,
   type SharedValue,
 } from "react-native-reanimated";
 import { Text } from "@/components/ui/text";
-import type { useChartColors } from "./shared";
+import {
+  calendarVerticalGridPaths,
+  formatYTick,
+  xAtIndex,
+  yTickLabelX,
+  Y_AXIS_TICK_COUNT,
+  type ChartColors,
+  type PlotXRange,
+  type XAxisBundle,
+} from "./shared";
 
-type ChartColors = ReturnType<typeof useChartColors>;
 type CurveType = "natural" | "linear";
 type ChartBounds = { top: number; bottom: number; left: number; right: number };
 
-const MIDNIGHT_STROKE = 0.7;
+export const GRID_MINOR_STROKE = 1;
+export const GRID_MAJOR_STROKE = 1.25;
 
 type PointsMap = Record<string, any>;
 
 interface CalendarGridProps {
   tickValues: number[];
   midnightIndices: number[];
-  xScale: (idx: number) => number;
   chartBounds: ChartBounds;
   colors: ChartColors;
+  plotX: PlotXRange;
 }
 
 export const CalendarGrid = memo(function CalendarGrid({
   tickValues,
   midnightIndices,
-  xScale,
   chartBounds,
   colors,
+  plotX,
 }: CalendarGridProps) {
-  const { top, bottom, left, right } = chartBounds;
-  const midnight = new Set(midnightIndices);
+  if (!plotX || plotX.n < 2) return null;
+  const { major, minor } = calendarVerticalGridPaths(
+    tickValues,
+    midnightIndices,
+    plotX,
+    chartBounds.top,
+    chartBounds.bottom
+  );
 
   return (
-    <>
-      {tickValues.map((idx) => {
-        const x = xScale(idx);
-        if (!Number.isFinite(x) || x < left || x > right) return null;
-        const isMidnight = midnight.has(idx);
+    <Group>
+      {minor !== "" && (
+        <SkiaPath
+          path={minor}
+          color={colors.gridMinor}
+          style="stroke"
+          strokeWidth={GRID_MINOR_STROKE}
+        />
+      )}
+      {major !== "" && (
+        <SkiaPath
+          path={major}
+          color={colors.gridMajor}
+          style="stroke"
+          strokeWidth={GRID_MAJOR_STROKE}
+        />
+      )}
+    </Group>
+  );
+});
+
+interface CalendarDayLabelsProps {
+  dayLabels: { idx: number; text: string }[];
+  axisFont: SkFont | null;
+  chartBounds: ChartBounds;
+  colors: ChartColors;
+  plotX: PlotXRange;
+}
+
+type YScale = ((v: number) => number) & { ticks?: (count: number) => number[] };
+
+interface YAxisLabelsProps {
+  ticks: number[];
+  yScale: (v: number) => number;
+  chartBounds: ChartBounds;
+  font: SkFont;
+  colors: ChartColors;
+}
+
+function YAxisLabels({ ticks, yScale, chartBounds, font, colors }: YAxisLabelsProps) {
+  const { left, top, bottom } = chartBounds;
+  const size = font.getSize();
+  return (
+    <Group>
+      {ticks.map((tick) => {
+        const text = formatYTick(tick);
+        if (!text) return null;
+        const tw = font.measureText(text).width;
+        const y = Math.min(Math.max(yScale(tick) + size / 3, top + size), bottom - 2);
+        if (!Number.isFinite(y) || !Number.isFinite(tw)) return null;
         return (
-          <SkiaLine
-            key={`cal-${idx}`}
-            p1={vec(x, top)}
-            p2={vec(x, bottom)}
-            color={isMidnight ? colors.gridMajor : colors.gridMinor}
-            strokeWidth={isMidnight ? MIDNIGHT_STROKE : StyleSheet.hairlineWidth}
+          <SkiaText
+            key={`y-${tick}`}
+            x={yTickLabelX(left, tw)}
+            y={y}
+            text={text}
+            font={font}
+            color={colors.axis}
           />
         );
       })}
+    </Group>
+  );
+}
+
+interface ChartOutsideAxesProps {
+  axisFont: SkFont | null;
+  yScale: YScale;
+  chartBounds: ChartBounds;
+  xAxis: XAxisBundle;
+  colors: ChartColors;
+  showYAxis: boolean;
+  plotX: PlotXRange | null;
+}
+
+/** Day + Y labels sit outside Victory's plot clip so edge ticks stay visible. */
+export function ChartOutsideAxes({
+  axisFont,
+  yScale,
+  chartBounds,
+  xAxis,
+  colors,
+  showYAxis,
+  plotX,
+}: ChartOutsideAxesProps) {
+  const ticks = showYAxis && yScale.ticks ? yScale.ticks(Y_AXIS_TICK_COUNT) : [];
+  return (
+    <>
+      {showYAxis && axisFont ? (
+        <YAxisLabels
+          ticks={ticks}
+          yScale={yScale}
+          chartBounds={chartBounds}
+          font={axisFont}
+          colors={colors}
+        />
+      ) : null}
+      {plotX ? (
+        <CalendarDayLabels
+          dayLabels={xAxis.dayLabels}
+          axisFont={axisFont}
+          chartBounds={chartBounds}
+          colors={colors}
+          plotX={plotX}
+        />
+      ) : null}
     </>
   );
-});
+}
+
+/** Drawn via CartesianChart renderOutside — children are clipped to the plot. */
+export function CalendarDayLabels({
+  dayLabels,
+  axisFont,
+  chartBounds,
+  colors,
+  plotX,
+}: CalendarDayLabelsProps) {
+  if (!axisFont || dayLabels.length === 0) return null;
+  const { left, right, bottom } = chartBounds;
+  const y = bottom + 2 + axisFont.getSize();
+
+  return (
+    <Group>
+      {dayLabels.map(({ idx, text }) => {
+        const x = xAtIndex(plotX.x0, plotX.x1, idx, plotX.n);
+        const tw = axisFont.measureText(text).width;
+        const tx = Math.min(Math.max(x - tw / 2, left), right - tw);
+        if (!Number.isFinite(tx)) return null;
+        return (
+          <SkiaText
+            key={`day-${idx}`}
+            x={tx}
+            y={y}
+            text={text}
+            font={axisFont}
+            color={colors.axis}
+          />
+        );
+      })}
+    </Group>
+  );
+}
 
 interface EnsembleBandsProps {
   points: PointsMap;
@@ -133,27 +277,28 @@ interface ChartCrosshairsProps {
   chartBounds: { top: number; bottom: number; left: number; right: number };
   colors: ChartColors;
   nowIdx: number | null;
-  nowX: number | null;
+  plotX: PlotXRange;
   isActive: boolean;
   pressX: SharedValue<number>;
   pressY: SharedValue<number>;
   syncIdx: SharedValue<number>;
-  dataLength: number;
 }
 
 export function ChartCrosshairs({
   chartBounds,
   colors,
   nowIdx,
-  nowX,
+  plotX,
   isActive,
   pressX,
   pressY,
   syncIdx,
-  dataLength,
 }: ChartCrosshairsProps) {
-  const { top, bottom, left, right } = chartBounds;
-  const n = dataLength;
+  const { top, bottom } = chartBounds;
+  const { x0, x1, n } = plotX;
+  const ready = Number.isFinite(top) && Number.isFinite(bottom);
+  const span = ready ? x1 - x0 : 0;
+  const nowX = ready && nowIdx != null ? xAtIndex(x0, x1, nowIdx, n) : null;
 
   const activeP1 = useDerivedValue(() => vec(pressX.value, top));
   const activeP2 = useDerivedValue(() => vec(pressX.value, bottom));
@@ -162,20 +307,20 @@ export function ChartCrosshairs({
     const idx = syncIdx.value;
     if (idx < 0 || n <= 1) return vec(-9999, top);
     const clamped = Math.min(Math.max(idx, 0), n - 1);
-    const x = left + (clamped / (n - 1)) * (right - left);
+    const x = x0 + (clamped / (n - 1)) * span;
     return vec(x, top);
   });
   const followerP2 = useDerivedValue(() => {
     const idx = syncIdx.value;
     if (idx < 0 || n <= 1) return vec(-9999, bottom);
     const clamped = Math.min(Math.max(idx, 0), n - 1);
-    const x = left + (clamped / (n - 1)) * (right - left);
+    const x = x0 + (clamped / (n - 1)) * span;
     return vec(x, bottom);
   });
 
   return (
     <>
-      {nowIdx != null && nowX != null && (
+      {ready && nowIdx != null && nowX != null && Number.isFinite(nowX) && (
         <SkiaLine
           p1={vec(nowX, top)}
           p2={vec(nowX, bottom)}
@@ -185,13 +330,13 @@ export function ChartCrosshairs({
           <DashPathEffect intervals={[4, 3]} />
         </SkiaLine>
       )}
-      {isActive && (
+      {ready && isActive && (
         <>
           <SkiaLine p1={activeP1} p2={activeP2} color={colors.crosshair} strokeWidth={1} />
           <Circle cx={pressX} cy={pressY} r={5} color={colors.control} />
         </>
       )}
-      {!isActive && (
+      {ready && !isActive && (
         <SkiaLine
           p1={followerP1}
           p2={followerP2}

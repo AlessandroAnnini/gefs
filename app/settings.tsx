@@ -79,24 +79,24 @@ export default function SettingsScreen() {
     forecastDays,
     variables,
     colorScheme,
-    showYAxisUnits,
+    showYAxisLabels,
     setModel,
     setForecastDays,
     setVariables,
     setColorScheme,
-    setShowYAxisUnits,
+    setShowYAxisLabels,
   } = useSettingsStore(
     useShallow((s) => ({
       model: s.model,
       forecastDays: s.forecastDays,
       variables: s.variables,
       colorScheme: s.colorScheme,
-      showYAxisUnits: s.showYAxisUnits,
+      showYAxisLabels: s.showYAxisLabels,
       setModel: s.setModel,
       setForecastDays: s.setForecastDays,
       setVariables: s.setVariables,
       setColorScheme: s.setColorScheme,
-      setShowYAxisUnits: s.setShowYAxisUnits,
+      setShowYAxisLabels: s.setShowYAxisLabels,
     }))
   );
 
@@ -208,8 +208,8 @@ export default function SettingsScreen() {
           </Text>
           <OptionRow
             label="Show Y-axis labels"
-            selected={showYAxisUnits}
-            onPress={() => setShowYAxisUnits(!showYAxisUnits)}
+            selected={showYAxisLabels}
+            onPress={() => setShowYAxisLabels(!showYAxisLabels)}
             iconColor={iconColor}
           />
         </Card>

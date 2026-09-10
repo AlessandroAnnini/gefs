@@ -35,13 +35,13 @@ interface SettingsState {
   forecastDays: number;
   variables: WeatherVariable[];
   colorScheme: "system" | "light" | "dark";
-  showYAxisUnits: boolean;
+  showYAxisLabels: boolean;
   snoozedUpdateId: string | null;
   setModel: (model: EnsembleModel) => void;
   setForecastDays: (days: number) => void;
   setVariables: (variables: WeatherVariable[]) => void;
   setColorScheme: (scheme: "system" | "light" | "dark") => void;
-  setShowYAxisUnits: (v: boolean) => void;
+  setShowYAxisLabels: (v: boolean) => void;
   setSnoozedUpdateId: (id: string | null) => void;
 }
 
@@ -52,7 +52,7 @@ export const useSettingsStore = create<SettingsState>()(
       forecastDays: 7,
       variables: DEFAULT_VARIABLES,
       colorScheme: "system",
-      showYAxisUnits: true,
+      showYAxisLabels: false,
       snoozedUpdateId: null,
       setModel: (model) =>
         set((s) => ({
@@ -64,14 +64,14 @@ export const useSettingsStore = create<SettingsState>()(
       setVariables: (variables) => set({ variables: sanitizeVariables(variables) }),
       setColorScheme: (colorScheme) =>
         set({ colorScheme: isColorScheme(colorScheme) ? colorScheme : "system" }),
-      setShowYAxisUnits: (showYAxisUnits) => set({ showYAxisUnits }),
+      setShowYAxisLabels: (showYAxisLabels) => set({ showYAxisLabels }),
       setSnoozedUpdateId: (snoozedUpdateId) => set({ snoozedUpdateId }),
     }),
     {
       name: "gefs-settings",
-      version: 5,
+      version: 7,
       storage: createJSONStorage(() => AsyncStorage),
-      migrate: (persisted) => {
+      migrate: (persisted, fromVersion) => {
         const s = { ...(persisted as Record<string, unknown>) };
         delete s.isLocationFromMap;
         const model = isEnsembleModel(s.model) ? s.model : "ecmwf_ifs025";
@@ -85,6 +85,12 @@ export const useSettingsStore = create<SettingsState>()(
             typeof legacy === "number" && legacy > 0 ? `c:${legacy}` : null;
         }
         delete s.snoozedUpdateVersionCode;
+        if (fromVersion < 6) {
+          s.showYAxisLabels = false;
+        } else if (typeof s.showYAxisLabels !== "boolean") {
+          s.showYAxisLabels = typeof s.showYAxisUnits === "boolean" ? s.showYAxisUnits : false;
+        }
+        delete s.showYAxisUnits;
         return s as unknown as SettingsState;
       },
     }

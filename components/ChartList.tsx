@@ -142,7 +142,11 @@ export function ChartList() {
 
   return (
     <ChartFontsProvider>
-      <ChartSyncProvider key={syncKey}>
+      <ChartSyncProvider
+        key={syncKey}
+        hourly={hourly}
+        utcOffsetSeconds={data.utc_offset_seconds ?? 0}
+      >
         <ScrollView
           className="flex-1"
           refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={() => refetch()} />}
@@ -150,14 +154,10 @@ export function ChartList() {
           {variables.map((v: WeatherVariable) => (
             <View
               key={v}
-              className="mb-4"
-              style={{ height: v === "precipitation" ? 400 : 300 }}
+              className="mb-4 w-full"
+              style={v === "precipitation" ? undefined : { height: 300 }}
             >
-              <EnsembleChart
-                hourly={hourly}
-                variable={v}
-                utcOffsetSeconds={data.utc_offset_seconds ?? 0}
-              />
+              <EnsembleChart variable={v} />
             </View>
           ))}
           <View style={{ height: 48 }} />

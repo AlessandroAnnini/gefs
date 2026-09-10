@@ -26,7 +26,14 @@ export const VARIABLE_UNITS: Record<WeatherVariable, string> = {
 };
 
 /** Extra variables fetched alongside user-selected ones but not rendered as standalone charts */
-export const AUXILIARY_VARIABLES = ["wind_gusts_10m"] as const;
+export const AUXILIARY_VARIABLES = [
+  "weather_code",
+  "snowfall",
+  "rain",
+  "wind_gusts_10m",
+  /** Needed for freezing-rain pairing even when the temperature chart is hidden */
+  "temperature_2m",
+] as const;
 
 export const ENSEMBLE_MODELS = {
   ecmwf_ifs025: "ECMWF IFS 0.25°",
@@ -156,7 +163,41 @@ export function civilParts(unixSeconds: number, utcOffsetSeconds: number): Civil
 /** High enough for WeatherNext (64) and ECMWF (50); missing keys are skipped. */
 const MEMBER_COUNT = 64;
 
-function parseUnixTimes(raw: (number | null)[] | undefined): number[] {
+/** Control at [0], members at [1..64]. Cached per hourly object. */
+type SeriesBank = ((number | null)[] | undefined)[];
+const seriesBankCache = new WeakMap<object, Map<string, SeriesBank>>();
+
+function seriesBank(
+  hourly: Record<string, (number | null)[]>,
+  name: string
+): SeriesBank {
+  let byName = seriesBankCache.get(hourly);
+  if (!byName) {
+    byName = new Map();
+    seriesBankCache.set(hourly, byName);
+  }
+  let bank = byName.get(name);
+  if (!bank) {
+    bank = new Array(MEMBER_COUNT + 1);
+    bank[0] = hourly[name];
+    for (let i = 1; i <= MEMBER_COUNT; i++) {
+      bank[i] = hourly[`${name}_member${String(i).padStart(2, "0")}`];
+    }
+    byName.set(name, bank);
+  }
+  return bank;
+}
+
+function finiteCell(series: (number | null)[] | undefined, t: number): number | null {
+  const v = series?.[t];
+  return typeof v === "number" && Number.isFinite(v) ? v : null;
+}
+
+export function civilTimeline(time: number[], utcOffsetSeconds: number): CivilParts[] {
+  return time.map((t) => civilParts(t, utcOffsetSeconds));
+}
+
+export function parseUnixTimes(raw: (number | null)[] | undefined): number[] {
   if (!raw) return [];
   const out: number[] = [];
   for (const t of raw) {
@@ -179,12 +220,12 @@ function hasValueAt(
 
 function collectMembers(
   hourly: Record<string, (number | null)[]>,
-  variable: WeatherVariable
+  variable: string
 ): (number | null)[][] {
   const members: (number | null)[][] = [];
+  const bank = seriesBank(hourly, variable);
   for (let i = 1; i <= MEMBER_COUNT; i++) {
-    const key = `${variable}_member${String(i).padStart(2, "0")}`;
-    const series = hourly[key];
+    const series = bank[i];
     if (Array.isArray(series) && series.length > 0) members.push(series);
   }
   return members;
@@ -344,14 +385,13 @@ export interface TempAlert {
 export function detectTempAlerts(
   members: (number | null)[][],
   control: (number | null)[],
-  time: number[],
-  utcOffsetSeconds: number
+  civils: CivilParts[]
 ): TempAlert[] {
   const alerts: TempAlert[] = [];
-  const len = control.length;
+  const len = Math.min(control.length, civils.length);
 
   for (let t = 0; t < len; t++) {
-    if (civilParts(time[t], utcOffsetSeconds).hours % 6 !== 0) continue;
+    if (civils[t].hours % 6 !== 0) continue;
 
     let minVal = control[t] ?? Infinity;
     let maxVal = control[t] ?? -Infinity;
@@ -369,73 +409,148 @@ export function detectTempAlerts(
   return alerts;
 }
 
-export interface DailyRain {
-  label: string;
-  median: number;
-  p10: number;
-  p90: number;
+export const WEATHER_EVENT_TYPES = [
+  "hail",
+  "thunder",
+  "freezing_rain",
+  "snow",
+  "gusts",
+] as const;
+
+export type WeatherEventType = (typeof WEATHER_EVENT_TYPES)[number];
+
+export interface WeatherEvent {
+  idx: number;
+  type: WeatherEventType;
+}
+
+const EVENT_MEMBER_FRACTION = 0.25;
+const SNOW_CM = 0.1;
+const RAIN_MM = 0.1;
+const GUST_KMH = 70;
+
+function collectFinite(
+  hourly: Record<string, (number | null)[]>,
+  name: string,
+  t: number
+): number[] {
+  const out: number[] = [];
+  const bank = seriesBank(hourly, name);
+  for (let i = 0; i <= MEMBER_COUNT; i++) {
+    const v = finiteCell(bank[i], t);
+    if (v != null) out.push(v);
+  }
+  return out;
+}
+
+function membersAgree(hits: number, n: number): boolean {
+  return n > 0 && hits / n >= EVENT_MEMBER_FRACTION;
+}
+
+function isHailCode(code: number): boolean {
+  return code === 96 || code === 99;
+}
+
+function isThunderCode(code: number): boolean {
+  return code === 95 || isHailCode(code);
+}
+
+function isFreezingRainCode(code: number): boolean {
+  return code === 66 || code === 67;
+}
+
+function isSnowCode(code: number): boolean {
+  return (code >= 71 && code <= 77) || code === 85 || code === 86;
+}
+
+const EVENT_PRIORITY: Record<WeatherEventType, number> = {
+  hail: 0,
+  thunder: 1,
+  freezing_rain: 2,
+  snow: 3,
+  gusts: 4,
+};
+
+function betterEvent(a: WeatherEventType | null, b: WeatherEventType): WeatherEventType {
+  if (a == null) return b;
+  return EVENT_PRIORITY[b] < EVENT_PRIORITY[a] ? b : a;
+}
+
+function eventTypeAtHour(
+  hourly: Record<string, (number | null)[]>,
+  t: number,
+  rainBank: SeriesBank,
+  tempBank: SeriesBank
+): WeatherEventType | null {
+  const wmo = collectFinite(hourly, "weather_code", t).map((c) => Math.round(c));
+  const snowAmt = collectFinite(hourly, "snowfall", t);
+  const gustAmt = collectFinite(hourly, "wind_gusts_10m", t);
+
+  let fzHits = 0;
+  let fzN = 0;
+  for (let i = 0; i <= MEMBER_COUNT; i++) {
+    const r = finiteCell(rainBank[i], t);
+    const c = finiteCell(tempBank[i], t);
+    if (r == null || c == null) continue;
+    fzN += 1;
+    if (r > RAIN_MM && c <= 0) fzHits += 1;
+  }
+
+  if (membersAgree(wmo.filter(isHailCode).length, wmo.length)) return "hail";
+  if (membersAgree(wmo.filter(isThunderCode).length, wmo.length)) return "thunder";
+  if (
+    membersAgree(wmo.filter(isFreezingRainCode).length, wmo.length) ||
+    membersAgree(fzHits, fzN)
+  ) {
+    return "freezing_rain";
+  }
+  if (
+    membersAgree(snowAmt.filter((v) => v > SNOW_CM).length, snowAmt.length) ||
+    membersAgree(wmo.filter(isSnowCode).length, wmo.length)
+  ) {
+    return "snow";
+  }
+  if (membersAgree(gustAmt.filter((v) => v >= GUST_KMH).length, gustAmt.length)) return "gusts";
+  return null;
 }
 
 /**
- * Sum hourly precipitation into daily totals across all ensemble members,
- * then return the median, P10, and P90 of daily totals.
- * Groups by the forecast location's calendar day. Null hours are skipped.
+ * One icon per local 6-hour block (00–05, 06–11, …). A block fires when any
+ * hour in it has ≥25% of finite members agreeing. Priority: hail > thunder >
+ * freezing rain > snow > gusts. Icon sits on the 00/06/12/18 hour when present.
  */
-export function computeDailyRain(
-  members: (number | null)[][],
-  control: (number | null)[],
-  time: number[],
-  utcOffsetSeconds: number
-): DailyRain[] {
-  if (time.length === 0) return [];
+export function detectWeatherEvents(
+  hourly: Record<string, (number | null)[]>,
+  civils: CivilParts[]
+): WeatherEvent[] {
+  if (civils.length === 0) return [];
 
-  const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-  const allSeries = [control, ...members];
+  const rainBank = seriesBank(hourly, "rain");
+  const tempBank = seriesBank(hourly, "temperature_2m");
+  const blocks = new Map<string, number[]>();
 
-  const dayKeys: string[] = [];
-  const dayLabels: string[] = [];
-  const dayIndex = new Map<string, number>();
-  const hourToDay: number[] = new Array(time.length);
+  for (let t = 0; t < civils.length; t++) {
+    const c = civils[t];
+    const key = `${c.year}-${c.month}-${c.date}-${Math.floor(c.hours / 6)}`;
+    const list = blocks.get(key);
+    if (list) list.push(t);
+    else blocks.set(key, [t]);
+  }
 
-  for (let t = 0; t < time.length; t++) {
-    const p = civilParts(time[t], utcOffsetSeconds);
-    const key = `${p.year}-${p.month}-${p.date}`;
-    let idx = dayIndex.get(key);
-    if (idx == null) {
-      idx = dayKeys.length;
-      dayIndex.set(key, idx);
-      dayKeys.push(key);
-      dayLabels.push(`${dayNames[p.day]} ${p.date}`);
+  const events: WeatherEvent[] = [];
+  for (const indices of blocks.values()) {
+    let best: WeatherEventType | null = null;
+    let placeIdx = indices[0];
+    for (const t of indices) {
+      if (civils[t].hours % 6 === 0) placeIdx = t;
+      if (best === "hail") continue;
+      const type = eventTypeAtHour(hourly, t, rainBank, tempBank);
+      if (type) best = betterEvent(best, type);
     }
-    hourToDay[t] = idx;
+    if (best) events.push({ idx: placeIdx, type: best });
   }
 
-  const numDays = dayKeys.length;
-  const dailyTotalsPerMember: number[][] = [];
-
-  for (const series of allSeries) {
-    const sums = new Array(numDays).fill(0);
-    for (let t = 0; t < time.length; t++) {
-      if (series[t] != null) sums[hourToDay[t]] += series[t]!;
-    }
-    dailyTotalsPerMember.push(sums);
-  }
-
-  const result: DailyRain[] = [];
-  for (let d = 0; d < numDays; d++) {
-    const vals = dailyTotalsPerMember.map((s) => s[d]).sort((a, b) => a - b);
-    const median = vals[Math.floor(vals.length / 2)];
-    const lo = vals[Math.floor(0.1 * (vals.length - 1))];
-    const hi = vals[Math.ceil(0.9 * (vals.length - 1))];
-    result.push({
-      label: dayLabels[d],
-      median: Math.round(median * 10) / 10,
-      p10: Math.round(lo * 10) / 10,
-      p90: Math.round(hi * 10) / 10,
-    });
-  }
-
-  return result;
+  return events;
 }
 
 async function fetchEnsemble(
@@ -446,10 +561,8 @@ async function fetchEnsemble(
   days: number
 ): Promise<EnsembleResponse> {
   const allVars: string[] = [...variables];
-  if (variables.includes("wind_speed_10m")) {
-    for (const extra of AUXILIARY_VARIABLES) {
-      if (!allVars.includes(extra)) allVars.push(extra);
-    }
+  for (const extra of AUXILIARY_VARIABLES) {
+    if (!allVars.includes(extra)) allVars.push(extra);
   }
   const forecastDays = clampForecastDays(days, model);
   const params = new URLSearchParams({

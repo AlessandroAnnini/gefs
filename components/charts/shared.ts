@@ -1,37 +1,128 @@
-import { useMemo, useState } from "react";
-import type { SkFont } from "@shopify/react-native-skia";
-import { useChartPressState } from "victory-native";
-import { useAnimatedReaction, runOnJS } from "react-native-reanimated";
+import { useMemo } from "react";
 import { useResolvedColorScheme } from "@/lib/useResolvedColorScheme";
 import {
+  type CivilParts,
   type WeatherVariable,
   parseEnsembleSeries,
-  civilParts,
   computeBands,
 } from "@/services/openMeteo";
-import { useChartSync } from "./ChartSync";
 
 export type ChartDatum = Record<string, number>;
 
 export interface ChartProps {
-  hourly: Record<string, (number | null)[]>;
   variable: WeatherVariable;
-  utcOffsetSeconds: number;
 }
 
 export const CHART_PAD = {
-  leftWithUnits: 40,
+  leftWithLabels: 36,
   left: 24,
   right: 8,
 } as const;
 
-export function chartPlotPadding(showYAxisUnits: boolean) {
+export const Y_AXIS_TICK_COUNT = 4;
+export const Y_LABEL_GAP = 4;
+
+/** Inset the first/last hours so edge day labels are not flush with the frame. */
+export const X_DOMAIN_PAD = { left: 22, right: 16 } as const;
+
+/** Pixel x for a (possibly fractional) time index between Victory xScale(0) and xScale(n-1). */
+export function xAtIndex(x0: number, x1: number, idx: number, n: number): number {
+  if (n <= 1) return x0;
+  return x0 + (idx / (n - 1)) * (x1 - x0);
+}
+
+/** Finite y extent for Victory — NaN in the series makes yScale() undefined and crashes Skia. */
+export function yDomain(series: ((number | null | undefined)[] | undefined)[]): [number, number] | null {
+  let min = Infinity;
+  let max = -Infinity;
+  for (const s of series) {
+    if (!s) continue;
+    for (const v of s) {
+      if (typeof v === "number" && Number.isFinite(v)) {
+        min = Math.min(min, v);
+        max = Math.max(max, v);
+      }
+    }
+  }
+  if (min === Infinity) return null;
+  if (min === max) {
+    const pad = Math.abs(min) * 0.05 || 1;
+    return [min - pad, max + pad];
+  }
+  return [min, max];
+}
+
+export function chartPlotPadding(showYAxis: boolean) {
   return {
-    left: showYAxisUnits ? CHART_PAD.leftWithUnits : CHART_PAD.left,
+    left: showYAxis ? CHART_PAD.leftWithLabels : CHART_PAD.left,
     right: CHART_PAD.right,
     top: 8,
     bottom: 22,
   };
+}
+
+export function yTickLabelX(frameLeft: number, textWidth: number): number {
+  return frameLeft - Y_LABEL_GAP - textWidth;
+}
+
+export type PlotXRange = {
+  x0: number;
+  x1: number;
+  n: number;
+  frameLeft: number;
+  frameRight: number;
+};
+
+/** Vertical 12h / midnight grid as two Skia path strings (charts + rain-probability banner). */
+export function calendarVerticalGridPaths(
+  tickValues: number[],
+  midnightIndices: number[],
+  plotX: PlotXRange,
+  top: number,
+  bottom: number
+): { major: string; minor: string } {
+  if (plotX.n < 2) return { major: "", minor: "" };
+  const mid = new Set(midnightIndices);
+  const major: string[] = [];
+  const minor: string[] = [];
+  for (const idx of tickValues) {
+    const x = xAtIndex(plotX.x0, plotX.x1, idx, plotX.n);
+    if (!Number.isFinite(x) || x < plotX.x0 || x > plotX.x1) continue;
+    const seg = `M ${x} ${top} L ${x} ${bottom}`;
+    (mid.has(idx) ? major : minor).push(seg);
+  }
+  return { major: major.join(" "), minor: minor.join(" ") };
+}
+
+/** Matches Victory with inset Y-axis, font null, and X_DOMAIN_PAD. */
+export function plotXFromLayout(
+  width: number,
+  n: number,
+  showYAxis: boolean
+): PlotXRange | null {
+  if (width <= 0 || n < 2) return null;
+  const pad = chartPlotPadding(showYAxis);
+  const frameLeft = pad.left;
+  const frameRight = width - pad.right;
+  if (frameRight - frameLeft < X_DOMAIN_PAD.left + X_DOMAIN_PAD.right + 8) return null;
+  return {
+    x0: frameLeft + X_DOMAIN_PAD.left,
+    x1: frameRight - X_DOMAIN_PAD.right,
+    n,
+    frameLeft,
+    frameRight,
+  };
+}
+
+/** Numeric ticks only — the unit lives in the chart title. */
+export function formatYTick(val: number): string {
+  if (!Number.isFinite(val)) return "";
+  if (val !== 0 && Math.abs(val) < 2) {
+    const t = Math.round(val * 10) / 10;
+    return Object.is(t, -0) ? "0" : String(t);
+  }
+  const r = Math.round(val);
+  return Object.is(r, -0) ? "0" : String(r);
 }
 
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -41,13 +132,11 @@ export function chartValue(v: number | null | undefined): number {
   return v == null ? Number.NaN : v;
 }
 
-export function formatDayLabel(unixSeconds: number, utcOffsetSeconds: number): string {
-  const p = civilParts(unixSeconds, utcOffsetSeconds);
+export function formatDayFromCivil(p: CivilParts): string {
   return `${DAY_NAMES[p.day]} ${p.date}`;
 }
 
-export function formatDateTime(unixSeconds: number, utcOffsetSeconds: number): string {
-  const p = civilParts(unixSeconds, utcOffsetSeconds);
+export function formatTimeFromCivil(p: CivilParts): string {
   const h = p.hours.toString().padStart(2, "0");
   return `${DAY_NAMES[p.day]} ${p.date}, ${h}:00`;
 }
@@ -70,7 +159,13 @@ export function buildEnsembleData(
   control: (number | null)[],
   members: (number | null)[][],
   gustControl?: (number | null)[]
-): { data: ChartDatum[]; yKeys: string[]; memberKeys: string[]; hasGusts: boolean } {
+): {
+  data: ChartDatum[];
+  yKeys: string[];
+  memberKeys: string[];
+  hasGusts: boolean;
+  yDom: [number, number] | null;
+} {
   const { p10, p25, p75, p90 } = computeBands(members, control);
   const subset = members.slice(0, MAX_MEMBER_LINES);
   const hasGusts = !!gustControl && gustControl.length > 0;
@@ -98,20 +193,26 @@ export function buildEnsembleData(
     data[t] = datum;
   }
 
-  return { data, yKeys, memberKeys, hasGusts };
+  return {
+    data,
+    yKeys,
+    memberKeys,
+    hasGusts,
+    yDom: yDomain([control, ...members, gustControl]),
+  };
 }
 
 /** Press tracking keys only — members are visual-only. */
+export const PRESS_INIT_Y: Record<string, number> = {
+  control: 0,
+  p10: 0,
+  p90: 0,
+  p25: 0,
+  p75: 0,
+};
+
 export function pressInitY(hasGusts = false): Record<string, number> {
-  const y: Record<string, number> = {
-    control: 0,
-    p10: 0,
-    p90: 0,
-    p25: 0,
-    p75: 0,
-  };
-  if (hasGusts) y.gusts = 0;
-  return y;
+  return hasGusts ? { ...PRESS_INIT_Y, gusts: 0 } : PRESS_INIT_Y;
 }
 
 export function useChartColors() {
@@ -124,9 +225,8 @@ export function useChartColors() {
       outerSpread: isDark ? "rgba(56,189,248,0.12)" : "rgba(8,145,178,0.10)",
       innerSpread: isDark ? "rgba(56,189,248,0.25)" : "rgba(8,145,178,0.20)",
       axis: isDark ? "#94a3b8" : "#64748b",
-      grid: isDark ? "#334155" : "#e2e8f0",
-      gridMinor: isDark ? "rgba(148,163,184,0.14)" : "rgba(15,23,42,0.06)",
-      gridMajor: isDark ? "rgba(148,163,184,0.26)" : "rgba(15,23,42,0.10)",
+      gridMinor: isDark ? "rgba(148,163,184,0.22)" : "rgba(15,23,42,0.10)",
+      gridMajor: isDark ? "rgba(148,163,184,0.36)" : "rgba(15,23,42,0.16)",
       crosshair: isDark ? "rgba(255,255,255,0.4)" : "rgba(0,0,0,0.3)",
       nowLine: isDark ? "rgba(250,204,21,0.35)" : "rgba(202,138,4,0.35)",
       gust: isDark ? "rgba(251,146,60,0.7)" : "rgba(234,88,12,0.6)",
@@ -138,7 +238,7 @@ export function useChartColors() {
   );
 }
 
-export { useChartFonts } from "./ChartFonts";
+export type ChartColors = ReturnType<typeof useChartColors>;
 
 export function useSeriesData(
   hourly: Record<string, (number | null)[]>,
@@ -152,104 +252,67 @@ export function useSeriesData(
 
 const LONG_HORIZON_SECONDS = 7.5 * 24 * 3600;
 
-export function xAxisTickStep(time: number[]): 6 | 24 {
-  if (time.length < 2) return 6;
-  return time[time.length - 1] - time[0] <= LONG_HORIZON_SECONDS ? 6 : 24;
+export function xAxisTickStep(time: number[]): 12 | 24 {
+  if (time.length < 2) return 12;
+  return time[time.length - 1] - time[0] <= LONG_HORIZON_SECONDS ? 12 : 24;
 }
 
-export function timeTickIndices(
-  time: number[],
-  utcOffsetSeconds: number,
-  stepHours: number
-): number[] {
+export function timeTickIndices(civils: CivilParts[], stepHours: number): number[] {
   const indices: number[] = [];
-  for (let i = 0; i < time.length; i++) {
-    if (civilParts(time[i], utcOffsetSeconds).hours % stepHours === 0) {
+  for (let i = 0; i < civils.length; i++) {
+    if (civils[i].hours % stepHours === 0) indices.push(i);
+  }
+  return indices;
+}
+
+export function midnightTickIndices(civils: CivilParts[], tickValues: number[]): number[] {
+  return tickValues.filter((i) => civils[i].hours === 0);
+}
+
+export function dayStartIndices(civils: CivilParts[]): number[] {
+  const indices: number[] = [];
+  let prevKey = "";
+  for (let i = 0; i < civils.length; i++) {
+    const p = civils[i];
+    const key = `${p.year}-${p.month}-${p.date}`;
+    if (key !== prevKey) {
       indices.push(i);
+      prevKey = key;
     }
   }
   return indices;
 }
 
-export function midnightTickIndices(
-  time: number[],
-  utcOffsetSeconds: number,
-  tickValues: number[]
-): number[] {
-  return tickValues.filter((i) => civilParts(time[i], utcOffsetSeconds).hours === 0);
+/** ≤5 days: every day. 7–10: every other. 14: every third. */
+export function dayLabelStride(dayCount: number): number {
+  if (dayCount <= 5) return 1;
+  if (dayCount <= 10) return 2;
+  return 3;
 }
 
-export function useXAxisConfig(
-  time: number[],
-  axisFont: SkFont | null,
-  colors: ReturnType<typeof useChartColors>,
-  utcOffsetSeconds: number
-) {
-  return useMemo(() => {
-    const step = xAxisTickStep(time);
-    const tickValues = timeTickIndices(time, utcOffsetSeconds, step);
-    const midnightIndices = midnightTickIndices(time, utcOffsetSeconds, tickValues);
-
-    return {
-      xAxis: {
-        font: axisFont,
-        tickValues: midnightIndices,
-        labelColor: colors.axis,
-        lineWidth: 0,
-        labelOffset: 4,
-        formatXLabel: (val: any) => {
-          const i = Math.round(val as number);
-          if (i < 0 || i >= time.length) return "";
-          if (civilParts(time[i], utcOffsetSeconds).hours !== 0) return "";
-          return formatDayLabel(time[i], utcOffsetSeconds);
-        },
-      },
-      tickValues,
-      midnightIndices,
-    };
-  }, [time, axisFont, colors.axis, utcOffsetSeconds]);
+export function thinDayLabelIndices(indices: number[]): number[] {
+  const stride = dayLabelStride(indices.length);
+  if (stride <= 1) return indices;
+  return indices.filter((_, i) => i % stride === 0);
 }
 
-export function useTooltipPress(initY: Record<string, number>) {
-  const { syncIdx } = useChartSync();
-  const { state: pressState, isActive } = useChartPressState({
-    x: 0 as number,
-    y: initY,
-  });
+export type XAxisBundle = {
+  tickValues: number[];
+  midnightIndices: number[];
+  dayLabels: { idx: number; text: string }[];
+};
 
-  useAnimatedReaction(
-    () => ({
-      active: pressState.isActive.value,
-      xVal: pressState.x.value.value as number,
-    }),
-    (cur, prev) => {
-      if (cur.active) {
-        syncIdx.value = cur.xVal;
-      } else if (prev?.active) {
-        syncIdx.value = -1;
-      }
-    }
-  );
-
-  return { pressState, isActive };
-}
-
-/** Rounded sync index for tooltip text; updates only when the hour changes. */
-export function useSyncedTooltipIndex(): number | null {
-  const { syncIdx } = useChartSync();
-  const [tooltipIdx, setTooltipIdx] = useState<number | null>(null);
-
-  useAnimatedReaction(
-    () => {
-      const v = syncIdx.value;
-      return v < 0 ? -1 : Math.round(v);
-    },
-    (cur, prev) => {
-      if (cur === prev) return;
-      if (cur < 0) runOnJS(setTooltipIdx)(null);
-      else runOnJS(setTooltipIdx)(cur);
-    }
-  );
-
-  return tooltipIdx;
+export function buildXAxisConfig(time: number[], civils: CivilParts[]): XAxisBundle {
+  const step = xAxisTickStep(time);
+  const tickValues = timeTickIndices(civils, step);
+  const midnightIndices = midnightTickIndices(civils, tickValues);
+  const labelIndices = thinDayLabelIndices(dayStartIndices(civils));
+  return {
+    tickValues,
+    midnightIndices,
+    dayLabels: labelIndices.map((i) => ({
+      idx: i,
+      text: formatDayFromCivil(civils[i]),
+    })),
+  };
 }
